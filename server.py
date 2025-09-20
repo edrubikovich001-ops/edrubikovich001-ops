@@ -1,16 +1,14 @@
-# server.py — HTTP-сервер + запуск бота в фоне (для Render Web Service)
-
+# server.py — HTTP health + запуск бота в фоне
 import asyncio
 from fastapi import FastAPI
-from bot import main as run_bot  # из bot.py
+from bot import run_bot
 
 app = FastAPI()
 
 @app.get("/")
-def root():
+def health():
     return {"status": "ok"}
 
 @app.on_event("startup")
-async def start_bot():
-    # запускаем aiogram-поллинг в отдельной задаче
+async def _startup():
     asyncio.create_task(run_bot())
