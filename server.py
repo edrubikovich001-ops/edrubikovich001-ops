@@ -7,18 +7,25 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
+# Подключаем роутер с хэндлерами
+from bot import router
+
 # ==== окружение ====
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-# Render сам прокидывает публичный URL в переменную RENDER_EXTERNAL_URL,
-# но на всякий случай оставим твой домен как дефолт.
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
+
+# Render может прокинуть публичный URL в RENDER_EXTERNAL_URL.
+# Если переменной нет — используем твой домен.
 RENDER_URL = os.getenv(
     "RENDER_EXTERNAL_URL",
     "https://saleslosstracker-2-0-bot.onrender.com"
 )
 
-# В aiogram v3 parse_mode передаём через DefaultBotProperties:
+# В aiogram v3 parse_mode задаётся через DefaultBotProperties
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+dp.include_router(router)
 
 app = FastAPI()
 
@@ -27,26 +34,25 @@ WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
 
-# ===== healthcheck =====
 @app.get("/")
 async def root():
+    # healthcheck
     return {"status": "running", "webhook_path": WEBHOOK_PATH}
 
 
-# ===== входящий вебхук от Telegram =====
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
+    # приём апдейтов от Telegram
     data = await request.json()
     update = types.Update(**data)
     await dp.feed_update(bot, update)
     return Response(status_code=200)
 
 
-# ===== события старта/останова =====
 @app.on_event("startup")
 async def on_startup():
+    # устанавливаем вебхук на наш маршрут
     try:
-        # Привяжем вебхук к правильному пути.
         await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
         print("Webhook set to:", WEBHOOK_URL)
     except Exception as e:
