@@ -1,10 +1,12 @@
 services:
-  - type: worker
-    name: telegram-bot
-    env: python
+  - type: web
+    name: SalesLossTracker_2-0-bot
+    runtime: docker
     plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python run_local.py"
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: TZ
+        value: Asia/Almaty
