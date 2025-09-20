@@ -1,5 +1,5 @@
-import asyncio
-from bot import main
+# локальный запуск: python run_local.py
+import uvicorn
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
