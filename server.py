@@ -4,44 +4,51 @@ import os
 from fastapi import FastAPI, Request, Response
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
-# === окружение ===
+# ==== окружение ====
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://saleslosstracker-2-0-bot.onrender.com")
+# Render сам прокидывает публичный URL в переменную RENDER_EXTERNAL_URL,
+# но на всякий случай оставим твой домен как дефолт.
+RENDER_URL = os.getenv(
+    "RENDER_EXTERNAL_URL",
+    "https://saleslosstracker-2-0-bot.onrender.com"
+)
 
-bot = Bot(BOT_TOKEN, parse_mode="HTML")
+# В aiogram v3 parse_mode передаём через DefaultBotProperties:
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 app = FastAPI()
 
-# путь вебхука: /webhook/<ТОКЕН>
+# Путь вебхука: /webhook/<ТОКЕН>
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
 
-# ====== healthcheck ======
+# ===== healthcheck =====
 @app.get("/")
 async def root():
-    return {"status": "running", "webhook": WEBHOOK_PATH}
+    return {"status": "running", "webhook_path": WEBHOOK_PATH}
 
 
-# ====== Telegram webhook ======
+# ===== входящий вебхук от Telegram =====
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
-    # Telegram шлёт JSON с update
     data = await request.json()
     update = types.Update(**data)
-    # передаём апдейт в диспетчер aiogram
     await dp.feed_update(bot, update)
     return Response(status_code=200)
 
 
-# ====== события старта/останова ======
+# ===== события старта/останова =====
 @app.on_event("startup")
 async def on_startup():
-    # привяжем вебхук к правильному пути
     try:
+        # Привяжем вебхук к правильному пути.
         await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+        print("Webhook set to:", WEBHOOK_URL)
     except Exception as e:
         print("Webhook set error:", e)
 
