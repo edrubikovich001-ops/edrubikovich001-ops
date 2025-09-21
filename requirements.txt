@@ -3,3 +3,4 @@ python-dotenv==1.0.1
 fastapi==0.114.1
 uvicorn==0.30.6
 asyncpg==0.29.0
+python-dateutil==2.9.0.post0
