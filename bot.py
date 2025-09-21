@@ -1,67 +1,58 @@
-# bot.py — aiogram v3.x
+# db.py — простая обёртка над asyncpg
 import os
-from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import (
-    Message, CallbackQuery,
-    ReplyKeyboardMarkup, KeyboardButton
-)
-from aiogram.filters import CommandStart
+import asyncpg
 
-# === Безопасность и конфиг ===
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+_DB_URL = os.getenv("DATABASE_URL")
+_pool: asyncpg.Pool | None = None
 
-router = Router()
-dp = Dispatcher()
-dp.include_router(router)
+async def get_pool() -> asyncpg.Pool:
+    global _pool
+    if _pool is None:
+        if not _DB_URL:
+            raise RuntimeError("DATABASE_URL is not set")
+        _pool = await asyncpg.create_pool(dsn=_DB_URL, min_size=1, max_size=5)
+    return _pool
 
-# === Тексты кнопок: приём и с эмодзи и без ===
-INCIDENT_BTN_TXT = {"Инцидент", "🆕 Инцидент"}
-CLOSE_BTN_TXT    = {"Закрыть", "✅ Закрыть"}
-REPORT_BTN_TXT   = {"Отчёт", "📊 Отчёт"}
+# ---- Список управляющих (ТУ) ----
+async def list_managers() -> list[asyncpg.Record]:
+    pool = await get_pool()
+    async with pool.acquire() as con:
+        rows = await con.fetch("""SELECT id, name FROM managers ORDER BY name""")
+    return rows
 
-def main_menu_kb() -> ReplyKeyboardMarkup:
-    # Показываем красивые подписи (с эмодзи),
-    # но хендлеры примут и без эмодзи.
-    rows = [
-        [KeyboardButton(text="🆕 Инцидент")],
-        [KeyboardButton(text="✅ Закрыть")],
-        [KeyboardButton(text="📊 Отчёт")],
-    ]
-    return ReplyKeyboardMarkup(
-        keyboard=rows,
-        resize_keyboard=True,
-        input_field_placeholder="Выберите действие…"
-    )
+# ---- Рестораны ТУ ----
+async def list_restaurants_by_manager(manager_id: int) -> list[asyncpg.Record]:
+    pool = await get_pool()
+    q = """
+    SELECT r.id, r.name
+    FROM manager_restaurants mr
+    JOIN restaurants r ON r.id = mr.restaurant_id
+    WHERE mr.manager_id = $1
+    ORDER BY r.name
+    """
+    async with pool.acquire() as con:
+        rows = await con.fetch(q, manager_id)
+    return rows
 
-# === Хендлеры ===
-@router.message(CommandStart())
-async def on_start(message: Message):
-    await message.answer(
-        "Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.",
-        reply_markup=main_menu_kb(),
-    )
-
-# Инцидент — принимаем варианты текста с/без эмодзи
-@router.message(F.text.in_(INCIDENT_BTN_TXT))
-async def on_incident(message: Message):
-    await message.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
-
-# Закрыть — варианты с/без эмодзи
-@router.message(F.text.in_(CLOSE_BTN_TXT))
-async def on_close(message: Message):
-    await message.answer("Закрытие инцидента… (заглушка)")
-
-# Отчёт — варианты с/без эмодзи
-@router.message(F.text.in_(REPORT_BTN_TXT))
-async def on_report(message: Message):
-    await message.answer("Генерация отчёта… (заглушка)")
-
-# На всякий случай: эхо для отладки остальных сообщений
-@router.message(F.text)
-async def fallback(message: Message):
-    await message.answer(
-        f"Я понял: «{message.text}».\nВыберите действие на клавиатуре ниже.",
-        reply_markup=main_menu_kb(),
-    )
+# ---- Вставка инцидента ----
+async def insert_incident(
+    manager_id: int,
+    restaurant_id: int,
+    start_ts,                   # datetime
+    end_ts,                     # datetime | None
+    reason: str,                # enum текст: 'external'/'internal'/'staff_shortage'/'no_product'
+    comment: str | None,
+    amount_kzt: int,
+    status: str                 # 'open' или 'closed'
+) -> int:
+    pool = await get_pool()
+    q = """
+    INSERT INTO incidents
+        (manager_id, restaurant_id, start_time, end_time, reason, comment, amount_kzt, status)
+    VALUES
+        ($1, $2, $3, $4, $5::loss_reason, $6, $7, $8::incident_status)
+    RETURNING id
+    """
+    async with pool.acquire() as con:
+        new_id = await con.fetchval(q, manager_id, restaurant_id, start_ts, end_ts, reason, comment, amount_kzt, status)
+    return int(new_id)
