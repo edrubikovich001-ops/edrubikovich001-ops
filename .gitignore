@@ -1,15 +1,17 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.env
 .env
 .venv/
 venv/
-env/
 .idea/
 .vscode/
-.cache/
 dist/
 build/
+*.egg-info/
+
+# OS
 .DS_Store
-Thumbs.db
