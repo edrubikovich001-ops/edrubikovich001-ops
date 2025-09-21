@@ -2,19 +2,23 @@
 import os
 from aiogram import Bot, Dispatcher, Router, F, types
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import CommandStart
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-bot = Bot(BOT_TOKEN, parse_mode=ParseMode.HTML)
+# ⬇️ Главное изменение здесь:
+bot = Bot(
+    BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+
 dp = Dispatcher()
 
-# Подключаем router только здесь (и только один раз)
 router = Router(name="main")
 dp.include_router(router)
 
-# Клавиатура на главном экране
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🆕 Инцидент")],
