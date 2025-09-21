@@ -2,11 +2,10 @@ services:
   - type: web
     name: SalesLossTracker_2-0-bot
     runtime: docker
-    plan: free
+    region: oregon
     envVars:
       - key: BOT_TOKEN
-        sync: false
-      - key: DATABASE_URL
-        sync: false
+        sync: false   # задашь в панели Render
       - key: TZ
         value: Asia/Almaty
+    autoDeploy: false
