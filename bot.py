@@ -1,58 +1,62 @@
-# db.py — простая обёртка над asyncpg
-import os
-import asyncpg
+# bot.py — Aiogram v3: базовое меню и реакция на кнопки с эмодзи
+from __future__ import annotations
 
-_DB_URL = os.getenv("DATABASE_URL")
-_pool: asyncpg.Pool | None = None
+import re
+import logging
+from aiogram import Router, F, types
+from aiogram.filters import CommandStart
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-async def get_pool() -> asyncpg.Pool:
-    global _pool
-    if _pool is None:
-        if not _DB_URL:
-            raise RuntimeError("DATABASE_URL is not set")
-        _pool = await asyncpg.create_pool(dsn=_DB_URL, min_size=1, max_size=5)
-    return _pool
+router = Router(name="main")
 
-# ---- Список управляющих (ТУ) ----
-async def list_managers() -> list[asyncpg.Record]:
-    pool = await get_pool()
-    async with pool.acquire() as con:
-        rows = await con.fetch("""SELECT id, name FROM managers ORDER BY name""")
-    return rows
+# ——— Красивые кнопки (с эмодзи) ———
+BTN_INCIDENT_ICON = "🆕"
+BTN_CLOSE_ICON    = "✅"
+BTN_REPORT_ICON   = "📊"
 
-# ---- Рестораны ТУ ----
-async def list_restaurants_by_manager(manager_id: int) -> list[asyncpg.Record]:
-    pool = await get_pool()
-    q = """
-    SELECT r.id, r.name
-    FROM manager_restaurants mr
-    JOIN restaurants r ON r.id = mr.restaurant_id
-    WHERE mr.manager_id = $1
-    ORDER BY r.name
-    """
-    async with pool.acquire() as con:
-        rows = await con.fetch(q, manager_id)
-    return rows
+BTN_INCIDENT = f"{BTN_INCIDENT_ICON} Инцидент"
+BTN_CLOSE    = f"{BTN_CLOSE_ICON} Закрыть"
+BTN_REPORT   = f"{BTN_REPORT_ICON} Отчёт"
 
-# ---- Вставка инцидента ----
-async def insert_incident(
-    manager_id: int,
-    restaurant_id: int,
-    start_ts,                   # datetime
-    end_ts,                     # datetime | None
-    reason: str,                # enum текст: 'external'/'internal'/'staff_shortage'/'no_product'
-    comment: str | None,
-    amount_kzt: int,
-    status: str                 # 'open' или 'closed'
-) -> int:
-    pool = await get_pool()
-    q = """
-    INSERT INTO incidents
-        (manager_id, restaurant_id, start_time, end_time, reason, comment, amount_kzt, status)
-    VALUES
-        ($1, $2, $3, $4, $5::loss_reason, $6, $7, $8::incident_status)
-    RETURNING id
-    """
-    async with pool.acquire() as con:
-        new_id = await con.fetchval(q, manager_id, restaurant_id, start_ts, end_ts, reason, comment, amount_kzt, status)
-    return int(new_id)
+def main_menu() -> ReplyKeyboardMarkup:
+    kb = [
+        [KeyboardButton(text=BTN_INCIDENT)],
+        [KeyboardButton(text=BTN_CLOSE)],
+        [KeyboardButton(text=BTN_REPORT)],
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+# ——— Регулярки: ловим варианты с эмодзи/без и «Отчет/Отчёт» ———
+INCIDENT_RX = re.compile(r"Инцидент", re.IGNORECASE)
+CLOSE_RX    = re.compile(r"Закрыть", re.IGNORECASE)
+REPORT_RX   = re.compile(r"Отч[её]т", re.IGNORECASE)
+
+@router.message(CommandStart())
+async def on_start(message: types.Message):
+    logging.info("Start from %s (%s)", message.from_user.id, message.from_user.full_name)
+    await message.answer(
+        "Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.",
+        reply_markup=main_menu(),
+    )
+
+@router.message(F.text.regexp(INCIDENT_RX))
+async def on_incident(message: types.Message):
+    logging.info("Incident click: %r", message.text)
+    # Здесь позже добавим сценарий инцидента; пока заглушка
+    await message.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
+
+@router.message(F.text.regexp(CLOSE_RX))
+async def on_close(message: types.Message):
+    logging.info("Close click: %r", message.text)
+    await message.answer("Закрытие инцидента… (заглушка)")
+
+@router.message(F.text.regexp(REPORT_RX))
+async def on_report(message: types.Message):
+    logging.info("Report click: %r", message.text)
+    await message.answer("Формирование отчёта… (заглушка)")
+
+# Фоллбек: любой другой текст — подсказываем про кнопки
+@router.message(F.text)
+async def fallback(message: types.Message):
+    logging.info("Text (no match): %r", message.text)
+    await message.answer("Не понял. Нажмите кнопку ниже 👇", reply_markup=main_menu())
