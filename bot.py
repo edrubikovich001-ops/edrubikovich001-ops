@@ -1,63 +1,80 @@
 import os
-import logging
+import re
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.client.default import DefaultBotProperties
+from aiogram.filters import CommandStart
 from aiogram.types import (
-    Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+    Message,
+    ReplyKeyboardMarkup, KeyboardButton,
 )
-from aiogram.filters import Command
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
-
+# === Безопасность переменных ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+    raise RuntimeError("BOT_TOKEN env is not set")
 
-# parse_mode задан через DefaultBotProperties (aiogram v3)
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+# === Инициализация ===
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 router = Router()
-dp.include_router(router)
 
-def main_menu_kb() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="🆕 Инцидент", callback_data="incident:new")],
-        [InlineKeyboardButton(text="✅ Закрыть", callback_data="incident:close")],
-        [InlineKeyboardButton(text="📊 Отчёт", callback_data="report:menu")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# === Клавиатуры ===
+MAIN_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🆕 Инцидент")],
+        [KeyboardButton(text="✅ Закрыть")],
+        [KeyboardButton(text="📊 Отчёт")],
+    ],
+    resize_keyboard=True,
+)
 
-@router.message(Command("start"))
-async def start_cmd(message: Message):
-    await message.answer(
+def _norm(text: str) -> str:
+    """
+    Нормализуем текст: в нижний регистр, удаляем эмодзи/знаки,
+    чтобы хэндлеры срабатывали и с эмодзи, и без.
+    """
+    if not text:
+        return ""
+    t = text.lower()
+    # удалим всё кроме букв/цифр/пробелов (упростим)
+    t = re.sub(r"[^\w\sёЁа-яa-z0-9]", "", t, flags=re.IGNORECASE)
+    # сводим ё -> е
+    t = t.replace("ё", "е")
+    return t.strip()
+
+# === Хэндлеры ===
+
+@router.message(CommandStart())
+async def start_cmd(msg: Message):
+    await msg.answer(
         "Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.",
-        reply_markup=main_menu_kb()
+        reply_markup=MAIN_KB
     )
 
-# Точные обработчики
-@router.callback_query(F.data == "incident:new")
-async def incident_new(cb: CallbackQuery):
-    log.info("callback_query data=%s", cb.data)
-    await cb.answer()  # быстрый ответ во всплывашку
-    await cb.message.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
+@router.message(F.text)
+async def main_menu_handler(msg: Message):
+    t = _norm(msg.text)
 
-@router.callback_query(F.data == "incident:close")
-async def incident_close(cb: CallbackQuery):
-    log.info("callback_query data=%s", cb.data)
-    await cb.answer()
-    await cb.message.answer("Закрытие инцидента… (заглушка)")
+    # ловим варианты с/без эмодзи, в любом регистре
+    if "инцидент" in t:
+        await msg.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
+        return
 
-@router.callback_query(F.data == "report:menu")
-async def report_menu(cb: CallbackQuery):
-    log.info("callback_query data=%s", cb.data)
-    await cb.answer()
-    await cb.message.answer("Меню отчётов… (заглушка)")
+    if "закрыть" in t or "закрытие" in t:
+        await msg.answer("Открытые инциденты для закрытия… (заглушка)")
+        return
 
-# Подстраховка: «ловим всё», чтобы точно видеть реакцию
-@router.callback_query()
-async def any_callback(cb: CallbackQuery):
-    log.info("UNHANDLED callback_query data=%s", cb.data)
-    # Ответим, чтобы показать, что клик дошёл
-    await cb.answer("Получено: " + (cb.data or "—"))
-    await cb.message.answer(f"Колбэк пришёл: <code>{cb.data}</code>")
+    if "отчет" in t or "отчёт" in t:
+        await msg.answer("Какой период отчёта выбрать? (заглушка)")
+        return
+
+    # Если ничего не подошло — мягкая подсказка
+    await msg.answer(
+        "Я не понял команду. Нажмите одну из кнопок ниже.",
+        reply_markup=MAIN_KB
+    )
+
+# === Регистрация роутера ===
+dp.include_router(router)
+
+# === Запуск через server.py (uvicorn) ===
+# Ничего здесь не запускаем — диспетчер стартует из server.py
