@@ -1,13 +1,16 @@
-# Sales Loss Tracker Bot
+# SalesLossTracker 2.0 Bot
 
-Телеграм-бот (aiogram v3) для учёта потерь:
-- «Инцидент» → *закрыть сейчас* (ввод конца) или *закрыть позже* (сохраняем open).
-- «Закрыть» → список открытых, выбор конца/причины/коммента/суммы.
-- Кнопка **◀️ Назад** на каждом шаге. Сумма — 💰.
+FastAPI + Aiogram v3 (webhook). Готов к деплою на Render.
 
-## Локально
-```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env                               # заполнить BOT_TOKEN и DATABASE_URL
-python run_local.py
+## Запуск локально
+1. `python -m venv .venv && source .venv/bin/activate` (Windows: `.\.venv\Scripts\activate`)
+2. `pip install -r requirements.txt`
+3. Экспортируй переменные:
+   - `export BOT_TOKEN=...`
+   - `export TZ=Asia/Almaty`
+4. `python run_local.py` → http://localhost:8000/health
+
+## Вебхук (Render)
+После деплоя в Render:
+1. Скопируй URL сервиса, например: `https://your-bot.onrender.com`
+2. Открой в браузере:
