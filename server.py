@@ -1,36 +1,26 @@
 # server.py
 import os
-from fastapi import FastAPI, Request, HTTPException
-from aiogram.types import Update
-
-from bot import bot, dp  # берём уже созданные bot и dp; router здесь не трогаем
-
-APP_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("BASE_URL")
-BOT_TOKEN = os.environ["BOT_TOKEN"]
+import asyncio
+from fastapi import FastAPI, Request
+from aiogram import Dispatcher
+from bot import dp, bot
 
 app = FastAPI()
 
-@app.get("/")
-async def root():
-    return {"status": "ok"}
-
 @app.on_event("startup")
 async def on_startup():
-    # Настраиваем вебхук на наш URL
-    if not APP_URL:
-        return
-    webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
-    await bot.delete_webhook(drop_pending_updates=True)
-    ok = await bot.set_webhook(webhook_url)
-    if not ok:
-        raise RuntimeError("Failed to set webhook")
+    # ничего: webhook ты уже ставил руками; для Render достаточно работать по long-poll
+    pass
 
-@app.post("/webhook/{token}")
+@app.post("/{token}")
 async def telegram_webhook(token: str, request: Request):
-    # Простейшая проверка токена в пути
-    if token != BOT_TOKEN:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    data = await request.json()
-    update = Update.model_validate(data)
-    await dp.feed_update(bot, update)
+    if token != os.environ.get("BOT_TOKEN"):
+        return {"ok": False}
+    update = await request.json()
+    await dp.feed_webhook_update(bot, update)
     return {"ok": True}
+
+# локальный запуск
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
