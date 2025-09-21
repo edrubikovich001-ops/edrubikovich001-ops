@@ -1,80 +1,67 @@
+# bot.py — aiogram v3.x
 import os
-import re
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import CommandStart
 from aiogram.types import (
-    Message,
-    ReplyKeyboardMarkup, KeyboardButton,
+    Message, CallbackQuery,
+    ReplyKeyboardMarkup, KeyboardButton
 )
+from aiogram.filters import CommandStart
 
-# === Безопасность переменных ===
+# === Безопасность и конфиг ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN env is not set")
+    raise RuntimeError("BOT_TOKEN is not set")
 
-# === Инициализация ===
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
 router = Router()
+dp = Dispatcher()
+dp.include_router(router)
 
-# === Клавиатуры ===
-MAIN_KB = ReplyKeyboardMarkup(
-    keyboard=[
+# === Тексты кнопок: приём и с эмодзи и без ===
+INCIDENT_BTN_TXT = {"Инцидент", "🆕 Инцидент"}
+CLOSE_BTN_TXT    = {"Закрыть", "✅ Закрыть"}
+REPORT_BTN_TXT   = {"Отчёт", "📊 Отчёт"}
+
+def main_menu_kb() -> ReplyKeyboardMarkup:
+    # Показываем красивые подписи (с эмодзи),
+    # но хендлеры примут и без эмодзи.
+    rows = [
         [KeyboardButton(text="🆕 Инцидент")],
         [KeyboardButton(text="✅ Закрыть")],
         [KeyboardButton(text="📊 Отчёт")],
-    ],
-    resize_keyboard=True,
-)
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        input_field_placeholder="Выберите действие…"
+    )
 
-def _norm(text: str) -> str:
-    """
-    Нормализуем текст: в нижний регистр, удаляем эмодзи/знаки,
-    чтобы хэндлеры срабатывали и с эмодзи, и без.
-    """
-    if not text:
-        return ""
-    t = text.lower()
-    # удалим всё кроме букв/цифр/пробелов (упростим)
-    t = re.sub(r"[^\w\sёЁа-яa-z0-9]", "", t, flags=re.IGNORECASE)
-    # сводим ё -> е
-    t = t.replace("ё", "е")
-    return t.strip()
-
-# === Хэндлеры ===
-
+# === Хендлеры ===
 @router.message(CommandStart())
-async def start_cmd(msg: Message):
-    await msg.answer(
+async def on_start(message: Message):
+    await message.answer(
         "Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.",
-        reply_markup=MAIN_KB
+        reply_markup=main_menu_kb(),
     )
 
+# Инцидент — принимаем варианты текста с/без эмодзи
+@router.message(F.text.in_(INCIDENT_BTN_TXT))
+async def on_incident(message: Message):
+    await message.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
+
+# Закрыть — варианты с/без эмодзи
+@router.message(F.text.in_(CLOSE_BTN_TXT))
+async def on_close(message: Message):
+    await message.answer("Закрытие инцидента… (заглушка)")
+
+# Отчёт — варианты с/без эмодзи
+@router.message(F.text.in_(REPORT_BTN_TXT))
+async def on_report(message: Message):
+    await message.answer("Генерация отчёта… (заглушка)")
+
+# На всякий случай: эхо для отладки остальных сообщений
 @router.message(F.text)
-async def main_menu_handler(msg: Message):
-    t = _norm(msg.text)
-
-    # ловим варианты с/без эмодзи, в любом регистре
-    if "инцидент" in t:
-        await msg.answer("Окей, начинаем регистрацию инцидента… (заглушка)")
-        return
-
-    if "закрыть" in t or "закрытие" in t:
-        await msg.answer("Открытые инциденты для закрытия… (заглушка)")
-        return
-
-    if "отчет" in t or "отчёт" in t:
-        await msg.answer("Какой период отчёта выбрать? (заглушка)")
-        return
-
-    # Если ничего не подошло — мягкая подсказка
-    await msg.answer(
-        "Я не понял команду. Нажмите одну из кнопок ниже.",
-        reply_markup=MAIN_KB
+async def fallback(message: Message):
+    await message.answer(
+        f"Я понял: «{message.text}».\nВыберите действие на клавиатуре ниже.",
+        reply_markup=main_menu_kb(),
     )
-
-# === Регистрация роутера ===
-dp.include_router(router)
-
-# === Запуск через server.py (uvicorn) ===
-# Ничего здесь не запускаем — диспетчер стартует из server.py
