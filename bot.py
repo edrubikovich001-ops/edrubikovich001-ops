@@ -20,7 +20,6 @@ from db import (
     close_incident,
 )
 
-# --- базовые объекты
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 TZ = ZoneInfo(os.environ.get("TZ", "Asia/Almaty"))
 
@@ -29,17 +28,17 @@ dp = Dispatcher()
 router = Router(name="main")
 dp.include_router(router)
 
-# --- основные кнопки
+# Главное меню (без привязки к эмодзи)
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🆕 Инцидент")],
-        [KeyboardButton(text="✅ Закрыть")],
-        [KeyboardButton(text="📊 Отчёт")],
+        [KeyboardButton(text="Инцидент")],
+        [KeyboardButton(text="Закрыть")],
+        [KeyboardButton(text="Отчёт")],
     ],
     resize_keyboard=True,
 )
 
-# ====== FSM для создания инцидента ======
+# ====== FSM ======
 class IncidentFSM(StatesGroup):
     manager = State()
     restaurant = State()
@@ -63,10 +62,8 @@ AMOUNTS = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000]
 def date_options():
     today = dt.datetime.now(TZ).date()
     days = [today, today - dt.timedelta(days=1)]
-    # ещё 6 дат назад, чтобы всего было 8 вариантов (сегодня+вчера+6 дат)
     for i in range(2, 8):
         days.append(today - dt.timedelta(days=i))
-    # Покажем кнопками «Сегодня», «Вчера» и конкретные даты
     buttons = [
         [InlineKeyboardButton(text="📆 Сегодня", callback_data=f"day:{today.isoformat()}")],
         [InlineKeyboardButton(text="📆 Вчера", callback_data=f"day:{(today-dt.timedelta(days=1)).isoformat()}")],
@@ -88,12 +85,6 @@ def minute_kb():
     options = [0, 15, 30, 45]
     row = [InlineKeyboardButton(text=f"{m:02d}", callback_data=f"min:{m}") for m in options]
     return InlineKeyboardMarkup(inline_keyboard=[row])
-
-def back_cancel_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="nav:back"),
-        InlineKeyboardButton(text="❌ Отменить", callback_data="nav:cancel"),
-    ]])
 
 def reasons_kb():
     rows = [[InlineKeyboardButton(text=title, callback_data=f"reason:{code}") ] for title,code in REASONS]
@@ -118,24 +109,25 @@ def yes_no_kb():
         InlineKeyboardButton(text="❌ Отменить", callback_data="confirm:no"),
     ]])
 
-# --------- старт ----------
+# ---------- утилита: мягкое сравнение текста ----------
+def txt_is(msg: types.Message, *variants: str) -> bool:
+    t = (msg.text or "").strip().lower()
+    return any(v in t for v in [s.strip().lower() for s in variants])
+
+# ---------- /start ----------
 @router.message(CommandStart())
 async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
-    await m.answer(
-        "Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.",
-        reply_markup=main_kb,
-    )
+    await m.answer("Привет! Я бот учёта потерь продаж.\nВыберите действие из меню ниже.", reply_markup=main_kb)
 
-# ========= Создание инцидента =========
-@router.message(F.text == "🆕 Инцидент")
+# ========== СОЗДАНИЕ ИНЦИДЕНТА ==========
+@router.message(lambda m: txt_is(m, "инцидент", "🆕 инцидент"))
 async def start_incident(m: types.Message, state: FSMContext):
     await state.clear()
     managers = await fetch_managers()
     if not managers:
         await m.answer("В базе нет управляющих.")
         return
-    # сделаем инлайн-кнопки по 2 в ряд
     rows, row = [], []
     for mid, name in managers:
         row.append(InlineKeyboardButton(text=f"👤 {name}", callback_data=f"mgr:{mid}"))
@@ -151,7 +143,6 @@ async def start_incident(m: types.Message, state: FSMContext):
 async def choose_manager(c: types.CallbackQuery, state: FSMContext):
     manager_id = int(c.data.split(":")[1])
     await state.update_data(manager_id=manager_id)
-    # рестораны
     rest = await fetch_restaurants_for_manager(manager_id)
     if not rest:
         await c.message.edit_text("У выбранного управляющего нет привязанных ресторанов.")
@@ -171,7 +162,6 @@ async def choose_manager(c: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(IncidentFSM.restaurant, F.data == "nav:back")
 async def back_to_manager(c: types.CallbackQuery, state: FSMContext):
-    # вернёмся к списку управляющих
     managers = await fetch_managers()
     rows, row = [], []
     for mid, name in managers:
@@ -229,7 +219,6 @@ async def get_comment(m: types.Message, state: FSMContext):
     comment = m.text.strip()
     await state.update_data(comment=comment)
     await m.answer("💸 Выберите сумму (KZT) или «Другая сумма»:", reply_markup=amounts_kb())
-
     await state.set_state(IncidentFSM.amount)
 
 @router.callback_query(IncidentFSM.amount, F.data.startswith("amt:"))
@@ -237,8 +226,7 @@ async def choose_amount(c: types.CallbackQuery, state: FSMContext):
     _, val = c.data.split(":")
     if val == "other":
         await c.message.edit_text("Введите сумму числом, без разделителей:")
-        await c.answer()
-        return
+        await c.answer(); return
     amount = int(val)
     await state.update_data(amount=amount)
     await show_confirm(c.message, state)
@@ -247,16 +235,14 @@ async def choose_amount(c: types.CallbackQuery, state: FSMContext):
 
 @router.message(IncidentFSM.amount)
 async def other_amount(m: types.Message, state: FSMContext):
-    # парсим число
     txt = m.text.replace(" ", "").replace(",", "")
     if not txt.isdigit():
-        await m.answer("Нужно число. Попробуйте ещё раз:")
-        return
+        await m.answer("Нужно число. Попробуйте ещё раз:"); return
     await state.update_data(amount=int(txt))
     await show_confirm(m, state)
     await state.set_state(IncidentFSM.confirm)
 
-async def show_confirm(target_message: types.Message | types.Message, state: FSMContext):
+async def show_confirm(target_message: types.Message, state: FSMContext):
     data = await state.get_data()
     day: dt.date = data["day"]
     hour: int = data["hour"]
@@ -265,8 +251,6 @@ async def show_confirm(target_message: types.Message | types.Message, state: FSM
     reason = data["reason"]
     comment = data["comment"]
     amount = data["amount"]
-
-    # простая карточка
     text = (
         "<b>Подтверждение</b>\n"
         f"ТУ (ID): <code>{data['manager_id']}</code>\n"
@@ -276,7 +260,10 @@ async def show_confirm(target_message: types.Message | types.Message, state: FSM
         f"Комментарий: {comment}\n"
         f"Сумма: <b>{amount:,}</b> KZT".replace(",", " ")
     )
-    await target_message.answer(text, reply_markup=yes_no_kb())
+    await target_message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, сохранить", callback_data="confirm:yes"),
+        InlineKeyboardButton(text="❌ Отменить", callback_data="confirm:no"),
+    ]]))
 
 @router.callback_query(IncidentFSM.confirm, F.data == "confirm:yes")
 async def do_save(c: types.CallbackQuery, state: FSMContext):
@@ -285,7 +272,6 @@ async def do_save(c: types.CallbackQuery, state: FSMContext):
     hour: int = data["hour"]
     minute: int = data["minute"]
     start_dt = dt.datetime(day.year, day.month, day.day, hour, minute, tzinfo=TZ)
-
     inc_id = await insert_incident(
         manager_id=data["manager_id"],
         restaurant_id=data["restaurant_id"],
@@ -296,23 +282,22 @@ async def do_save(c: types.CallbackQuery, state: FSMContext):
         amount=data["amount"],
     )
     await state.clear()
-    await c.message.edit_text(f"✅ Инцидент <b>#{inc_id}</b> сохранён. Статус: <code>open</code>.", reply_markup=None)
+    await c.message.edit_text(f"✅ Инцидент <b>#{inc_id}</b> сохранён. Статус: <code>open</code>.")
     await c.answer()
 
 @router.callback_query(IncidentFSM.confirm, F.data.in_(["confirm:no", "nav:cancel"]))
 async def cancel_create(c: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await c.message.edit_text("Отменено.", reply_markup=None)
+    await c.message.edit_text("Отменено.")
     await c.answer()
 
-# ========= Закрытие инцидента =========
-@router.message(F.text == "✅ Закрыть")
+# ========== ЗАКРЫТИЕ ==========
+@router.message(lambda m: txt_is(m, "закрыть", "✅ закрыть"))
 async def close_menu(m: types.Message, state: FSMContext):
     await state.clear()
     items = await list_open_incidents()
     if not items:
-        await m.answer("Открытых инцидентов нет.")
-        return
+        await m.answer("Открытых инцидентов нет."); return
     rows = []
     for it in items:
         caption = f"#{it['id']} • {it['restaurant']} • {it['start_time']:%m-%d %H:%M} • {it['reason']} • {it['amount']}"
@@ -328,7 +313,7 @@ async def do_close_now(c: types.CallbackQuery):
     await c.message.edit_text(f"✅ Инцидент #{inc_id} закрыт в {now_ts:%Y-%m-%d %H:%M}.")
     await c.answer()
 
-# ========= Отчёт (пока заглушка) =========
-@router.message(F.text == "📊 Отчёт")
+# ========== ОТЧЁТ (заглушка) ==========
+@router.message(lambda m: txt_is(m, "отчёт", "отчет", "📊 отчёт"))
 async def report_stub(m: types.Message):
-    await m.answer("Выбор периода и формата отчёта… (позже добавим PDF/Excel).")
+    await m.answer("Выбор периода и формата отчёта… (добавим PDF/Excel на следующем шаге).")
