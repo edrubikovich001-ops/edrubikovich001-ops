@@ -1,58 +1,81 @@
-# db.py — простая обёртка над asyncpg
+# db.py
 import os
 import asyncpg
+from typing import Optional, List, Tuple, Any
+from contextlib import asynccontextmanager
 
-_DB_URL = os.getenv("DATABASE_URL")
-_pool: asyncpg.Pool | None = None
+_POOL: Optional[asyncpg.Pool] = None
 
-async def get_pool() -> asyncpg.Pool:
-    global _pool
-    if _pool is None:
-        if not _DB_URL:
-            raise RuntimeError("DATABASE_URL is not set")
-        _pool = await asyncpg.create_pool(dsn=_DB_URL, min_size=1, max_size=5)
-    return _pool
+async def init_pool():
+    global _POOL
+    dsn = os.getenv("DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("DATABASE_URL is not set")
+    _POOL = await asyncpg.create_pool(dsn, min_size=1, max_size=5)
 
-# ---- Список управляющих (ТУ) ----
-async def list_managers() -> list[asyncpg.Record]:
-    pool = await get_pool()
-    async with pool.acquire() as con:
-        rows = await con.fetch("""SELECT id, name FROM managers ORDER BY name""")
-    return rows
+async def close_pool():
+    global _POOL
+    if _POOL:
+        await _POOL.close()
+        _POOL = None
 
-# ---- Рестораны ТУ ----
-async def list_restaurants_by_manager(manager_id: int) -> list[asyncpg.Record]:
-    pool = await get_pool()
+@asynccontextmanager
+async def conn():
+    if not _POOL:
+        raise RuntimeError("DB pool is not initialized")
+    async with _POOL.acquire() as c:
+        yield c
+
+# ---- helpers ----
+
+async def get_managers() -> List[asyncpg.Record]:
+    async with conn() as c:
+        rows = await c.fetch("SELECT id, name FROM managers ORDER BY name;")
+        return rows
+
+async def get_restaurants_for_manager(manager_id: int) -> List[asyncpg.Record]:
     q = """
     SELECT r.id, r.name
     FROM manager_restaurants mr
     JOIN restaurants r ON r.id = mr.restaurant_id
     WHERE mr.manager_id = $1
-    ORDER BY r.name
+    ORDER BY r.name;
     """
-    async with pool.acquire() as con:
-        rows = await con.fetch(q, manager_id)
-    return rows
+    async with conn() as c:
+        return await c.fetch(q, manager_id)
 
-# ---- Вставка инцидента ----
-async def insert_incident(
-    manager_id: int,
-    restaurant_id: int,
-    start_ts,                   # datetime
-    end_ts,                     # datetime | None
-    reason: str,                # enum текст: 'external'/'internal'/'staff_shortage'/'no_product'
-    comment: str | None,
-    amount_kzt: int,
-    status: str                 # 'open' или 'closed'
-) -> int:
-    pool = await get_pool()
+async def insert_incident(manager_id: int, restaurant_id: int,
+                          start_ts, end_ts, reason: str,
+                          comment: str, amount_kzt: int,
+                          status: str) -> int:
     q = """
-    INSERT INTO incidents
-        (manager_id, restaurant_id, start_time, end_time, reason, comment, amount_kzt, status)
-    VALUES
-        ($1, $2, $3, $4, $5::loss_reason, $6, $7, $8::incident_status)
-    RETURNING id
+    INSERT INTO incidents (manager_id, restaurant_id, start_time, end_time,
+                           reason, comment, amount_kzt, status)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    RETURNING id;
     """
-    async with pool.acquire() as con:
-        new_id = await con.fetchval(q, manager_id, restaurant_id, start_ts, end_ts, reason, comment, amount_kzt, status)
-    return int(new_id)
+    async with conn() as c:
+        new_id = await c.fetchval(q, manager_id, restaurant_id, start_ts, end_ts,
+                                  reason, comment, amount_kzt, status)
+        return new_id
+
+async def list_open_incidents() -> List[asyncpg.Record]:
+    q = """
+    SELECT i.id, i.start_time, i.reason, i.amount_kzt, r.name AS restaurant, m.name AS manager
+    FROM incidents i
+    JOIN restaurants r ON r.id=i.restaurant_id
+    JOIN managers m    ON m.id=i.manager_id
+    WHERE i.status='open'
+    ORDER BY i.start_time DESC;
+    """
+    async with conn() as c:
+        return await c.fetch(q)
+
+async def close_incident(incident_id: int, end_ts) -> None:
+    q = """
+    UPDATE incidents
+    SET end_time=$2, status='closed'
+    WHERE id=$1;
+    """
+    async with conn() as c:
+        await c.execute(q, incident_id, end_ts)
