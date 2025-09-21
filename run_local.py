@@ -1,4 +1,3 @@
-# локальный запуск: python run_local.py
 import uvicorn
 
 if __name__ == "__main__":
