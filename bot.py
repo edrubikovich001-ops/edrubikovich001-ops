@@ -433,3 +433,18 @@ async def on_report(msg:Message, state:FSMContext):
 @router.message()
 async def fallback(message: Message):
     await message.answer("Нажмите кнопку внизу: «Инцидент», «Закрыть» или «Отчёт».", reply_markup=main_kb)
+from aiogram.filters import Command
+from aiogram.types import Message
+import logging
+
+logger = logging.getLogger(__name__)
+
+@router.message(Command("ping"))
+async def cmd_ping(message: Message):
+    await message.answer("pong ✅")
+
+@router.message()  # ФОЛБЭК: ответ на любое сообщение, если ничто не сработало
+async def fallback_echo(message: Message):
+    # логируем и отвечаем коротко, чтобы видеть, что до сюда дошли
+    logger.info("FALLBACK got text=%r", message.text)
+    await message.answer(f"⚙️ Я получил: {message.text!r}\n(включён диагностический режим)")
