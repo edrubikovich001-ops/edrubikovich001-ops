@@ -1,31 +1,36 @@
 # server.py
 import os
-from fastapi import FastAPI, Request, Response
-from aiogram import Bot, Dispatcher
+from fastapi import FastAPI, Request, HTTPException
 from aiogram.types import Update
 
-from bot import router  # <— импортируем router из bot.py
+from bot import bot, dp  # берём уже созданные bot и dp; router здесь не трогаем
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+APP_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("BASE_URL")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 app = FastAPI()
-bot = Bot(BOT_TOKEN)
-dp = Dispatcher()
-dp.include_router(router)
 
 @app.get("/")
 async def root():
     return {"status": "ok"}
 
-# Вебхук: /webhook/<полный_токен>
+@app.on_event("startup")
+async def on_startup():
+    # Настраиваем вебхук на наш URL
+    if not APP_URL:
+        return
+    webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
+    await bot.delete_webhook(drop_pending_updates=True)
+    ok = await bot.set_webhook(webhook_url)
+    if not ok:
+        raise RuntimeError("Failed to set webhook")
+
 @app.post("/webhook/{token}")
 async def telegram_webhook(token: str, request: Request):
+    # Простейшая проверка токена в пути
     if token != BOT_TOKEN:
-        # Защита: только наш токен
-        return Response(status_code=403)
+        raise HTTPException(status_code=403, detail="Forbidden")
     data = await request.json()
     update = Update.model_validate(data)
     await dp.feed_update(bot, update)
-    return Response(status_code=200)
+    return {"ok": True}
