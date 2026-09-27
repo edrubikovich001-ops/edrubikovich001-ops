@@ -1,0 +1,57 @@
+name: Hayeren media production fix
+
+on:
+  push:
+    branches: [hayeren-production]
+    paths:
+      - '.github/workflows/hayeren-media-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hayeren-production
+      - name: Patch real Armenia photos and mapping
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('hayeren-v6-server.js')
+          s=p.read_text()
+          old="""const M={history:'/media/yerevan',yerevan:'/media/yerevan',places:'/media/geghard',geghard:'/media/geghard',nature:'/media/sevan',sevan:'/media/sevan',culture:'/media/ararat',science:'/media/ararat',default:'/media/ararat'};"""
+          new="""const M={history:'/media/erebuni',yerevan:'/media/yerevan',places:'/media/geghard',geghard:'/media/geghard',nature:'/media/sevan',sevan:'/media/sevan',culture:'/media/khachkar',science:'/media/ararat',alphabet:'/media/alphabet',duduk:'/media/duduk',lavash:'/media/lavash',khachkar:'/media/khachkar',default:'/media/ararat'};"""
+          if old not in s: raise SystemExit('M mapping target not found')
+          s=s.replace(old,new)
+          old_kind="""function kind(t){t=(t||'').toLowerCase();if(/днк|генет|наук/.test(t))return'science';if(/севан|природ|озер/.test(t))return'nature';if(/гегард|эчмиадзин|звартноц|монастыр|мест|архитект/.test(t))return'places';if(/ереван|эрибун|эбребун|столиц/.test(t))return'yerevan';if(/дудук|лаваш|хачкар|кочари|алфавит|культур/.test(t))return'culture';return'history'}"""
+          new_kind="""function kind(t){t=(t||'').toLowerCase();if(/днк|генет|наук/.test(t))return'science';if(/севан|природ|озер/.test(t))return'nature';if(/алфавит|маштоц|письмен/.test(t))return'alphabet';if(/дудук/.test(t))return'duduk';if(/лаваш|хлеб|тонир/.test(t))return'lavash';if(/хачкар|крест-кам|крест кам/.test(t))return'khachkar';if(/гегард|эчмиадзин|звартноц|монастыр|мест|архитект/.test(t))return'places';if(/эребун|эрибун|урарт/.test(t))return'history';if(/ереван|столиц/.test(t))return'yerevan';if(/культур|кочари/.test(t))return'culture';return'history'}"""
+          if old_kind not in s: raise SystemExit('kind target not found')
+          s=s.replace(old_kind,new_kind)
+          start=s.index('const media={')
+          end=s.index('};',start)+2
+          media="""const media={
+  ararat:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Mount%20Ararat%20from%20Yerevan.JPG?width=1200',
+  yerevan:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Republic%20Square%20Yerevan.jpg?width=1200',
+  geghard:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Geghard%20Monastery%2C%20Armenia.jpg?width=1200',
+  sevan:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Lake%20Sevan%2C%20Armenia.jpg?width=1200',
+  erebuni:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Erebuni%20fortress%20in%20Armenia.jpg?width=1200',
+  alphabet:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Armenian%20Alphabet%20Monument.JPG?width=1200',
+  duduk:'https://commons.wikimedia.org/wiki/Special:Redirect/file/ArmenianDuduk-image.jpg?width=1200',
+  lavash:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Lavash%20arm%C3%A9nien.jpg?width=1200',
+  khachkar:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Armenian%20Khatchkar.jpg?width=1200'
+};"""
+          s=s[:start]+media+s[end:]
+          s=s.replace("v:'7.0'","v:'7.1'").replace("Hayeren/7.0 educational app","Hayeren/7.1 educational app").replace("window.__HAYEREN_VERSION__='7.0'","window.__HAYEREN_VERSION__='7.1'").replace("Hayeren v7 server ready","Hayeren v7.1 server ready")
+          p.write_text(s)
+          PY
+      - name: Commit media fix
+        run: |
+          git config user.name 'Hayeren Production Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add hayeren-v6-server.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Hayeren v7.1: real Armenia photography'
+          git push origin hayeren-production
