@@ -5,12 +5,14 @@ const path=require('path');
 
 function loadHtml(){
   const dir=path.join(__dirname,'hayeren-v6-payload');
-  const parts=fs.readdirSync(dir)
-    .filter(n=>/^\d+\.txt$/.test(n))
-    .sort((a,b)=>parseInt(a)-parseInt(b));
-  if(!parts.length) throw new Error('Hayeren payload is missing');
+  const parts=['1.txt','2.txt','3.txt','4.txt'];
+  for(const name of parts){
+    if(!fs.existsSync(path.join(dir,name))) throw new Error(`Missing payload ${name}`);
+  }
   const b64=parts.map(n=>fs.readFileSync(path.join(dir,n),'utf8').trim()).join('');
-  return zlib.gunzipSync(Buffer.from(b64,'base64')).toString('utf8');
+  const html=zlib.gunzipSync(Buffer.from(b64,'base64')).toString('utf8');
+  if(!html.toLowerCase().startsWith('<!doctype html>')) throw new Error('Invalid Hayeren HTML payload');
+  return html;
 }
 
 let html;
@@ -30,7 +32,7 @@ const manifest=JSON.stringify({
 const server=http.createServer((req,res)=>{
   if(req.url==='/health'){
     res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
-    return res.end(JSON.stringify({ok:true,htmlBytes:Buffer.byteLength(html),v:'6'}));
+    return res.end(JSON.stringify({ok:true,htmlBytes:Buffer.byteLength(html),v:'6',fallback:html.includes('Hayeren обновляется')}));
   }
   if(req.url==='/manifest.webmanifest'){
     res.writeHead(200,{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'public, max-age=3600'});
