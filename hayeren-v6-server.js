@@ -6,46 +6,43 @@ const path=require('path');
 function loadHtml(){
   const dir=path.join(__dirname,'hayeren-v6-payload');
   const parts=['1.txt','2.txt','3.txt','4.txt'];
-  for(const name of parts){
-    if(!fs.existsSync(path.join(dir,name))) throw new Error(`Missing payload ${name}`);
-  }
+  for(const name of parts){if(!fs.existsSync(path.join(dir,name))) throw new Error(`Missing payload ${name}`)}
   const b64=parts.map(n=>fs.readFileSync(path.join(dir,n),'utf8').trim()).join('');
   let html=zlib.gunzipSync(Buffer.from(b64,'base64')).toString('utf8');
   if(!html.toLowerCase().startsWith('<!doctype html>')) throw new Error('Invalid Hayeren HTML payload');
-  const runtimePrelude=`<script>(function(){window.process=window.process||{env:{}};window.process.env=window.process.env||{};window.process.env.NODE_ENV='production';function show(e){try{var r=document.getElementById('root');if(!r)return;var m=(e&&e.message)||String(e||'Ошибка запуска');r.innerHTML='<div style="padding:28px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#241f1a"><div style="font-size:44px;margin-bottom:12px">Հ</div><h2 style="margin:0 0 10px">Hayeren не смог запуститься</h2><p style="line-height:1.45;opacity:.75">'+m.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})+'</p><button onclick="location.reload()" style="border:0;border-radius:14px;padding:14px 18px;font-weight:700">Перезапустить</button></div>';}catch(_){}}window.addEventListener('error',function(ev){show(ev.error||new Error(ev.message))});window.addEventListener('unhandledrejection',function(ev){show(ev.reason)});})();</script>`;
-  html=html.replace('<head>','<head>'+runtimePrelude);
+
+  const runtimePrelude=`<script>(function(){window.process=window.process||{env:{}};window.process.env=window.process.env||{};window.process.env.NODE_ENV='production';function show(e){try{var r=document.getElementById('root');if(!r)return;var m=(e&&e.message)||String(e||'Ошибка запуска');r.innerHTML='<div style="padding:28px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#241f1a"><div style="font-size:44px;margin-bottom:12px">Հ</div><h2 style="margin:0 0 10px">Hayeren не смог запуститься</h2><p style="line-height:1.45;opacity:.75">'+m.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})+'</p><button onclick="location.reload()" style="border:0;border-radius:14px;padding:14px 18px;font-weight:700">Перезапустить</button></div>'}catch(_){}}window.addEventListener('error',function(ev){show(ev.error||new Error(ev.message))});window.addEventListener('unhandledrejection',function(ev){show(ev.reason)});})();</script>`;
+
+  const polish=`<style id="hayeren-polish-v62">
+:root{--bg:#f7f4ee!important;--surface:#fffefa!important;--surface2:#f0ebe2!important;--text:#241f1a!important;--muted:#7a7068!important;--brand:#b75d45!important;--brand2:#d69a52!important;--line:#e8e0d6!important;--shadow:0 8px 26px rgba(70,48,34,.065)!important}
+:root[data-theme="dark"]{--bg:#171513!important;--surface:#211e1b!important;--surface2:#2b2723!important;--text:#f8f3ed!important;--muted:#b8aea6!important;--brand:#df8a6b!important;--brand2:#e7ad68!important;--line:#3a332e!important}
+html,body{overscroll-behavior:none}.app-shell{max-width:480px!important}.v6-screen{padding-left:18px!important;padding-right:18px!important}.v6-home-head{padding-top:12px!important}.v6-home-head h1{font-size:27px!important;letter-spacing:-.8px!important}.v6-avatar{box-shadow:0 6px 18px rgba(94,52,38,.14);border:2px solid color-mix(in srgb,var(--surface) 80%,transparent)}
+.v6-next{position:relative;overflow:hidden;background:linear-gradient(145deg,#bd684e 0%,#9d4c3b 62%,#7f3d32 100%)!important;border-radius:28px!important;padding:20px!important;box-shadow:0 18px 38px rgba(128,63,43,.18)!important}.v6-next:after{content:'Ա';position:absolute;right:-8px;top:-25px;font-family:Georgia,serif;font-size:132px;font-weight:800;color:rgba(255,255,255,.075);transform:rotate(-8deg);pointer-events:none}.v6-next h2{font-size:26px!important;max-width:82%}.v6-next>button{border-radius:18px!important;box-shadow:0 5px 14px rgba(74,35,26,.12)}
+.v6-daily{border:0!important;box-shadow:0 6px 20px rgba(70,48,34,.055)!important}.v6-quick{gap:10px!important}.v6-quick button{min-height:104px!important;border:0!important;border-radius:22px!important;box-shadow:0 6px 20px rgba(70,48,34,.055)!important;transition:transform .16s ease}.v6-quick button:active{transform:scale(.975)}.v6-quick button>span{background:linear-gradient(145deg,#f1e7dd,#f8f3ed)!important;color:#a65340!important}.v6-stats{margin-top:16px!important}.v6-stats>div{border-top-color:#e6ddd2!important}
+.v6-page-head h1{font-size:29px!important}.course-progress-card>div{border:0!important;box-shadow:0 5px 18px rgba(70,48,34,.05)!important}.course-screen-v6 .unit{margin-bottom:8px}.course-screen-v6 .unit-head{margin-top:4px}.course-screen-v6 .lesson-card{border:0!important;box-shadow:0 5px 18px rgba(70,48,34,.05)!important;padding:12px!important}.course-screen-v6 .lesson-card.current{outline:2px solid color-mix(in srgb,var(--brand) 45%,transparent)!important}.course-screen-v6 .lesson-node{background:#f1ebe3!important}.course-screen-v6 .lesson-card.current .lesson-node{background:var(--brand)!important}.course-screen-v6 .lesson-card.done .lesson-node{background:#6e9b83!important}
+.translate-box,.translation-result{border:0!important;box-shadow:0 7px 24px rgba(70,48,34,.06)!important}.translate-box textarea{font-size:18px!important}.translate-switch{background:#eee7de!important}.translator-samples button{border:0!important;background:#fffefa!important;box-shadow:0 3px 12px rgba(70,48,34,.05)}
+.armenia-hero{grid-template-columns:1fr!important;position:relative;overflow:hidden;min-height:230px;padding:22px!important;margin:0 0 14px;border-radius:28px;background:linear-gradient(145deg,#fff2e5 0%,#f1d2b9 100%)}.armenia-hero>div:first-child{position:relative;z-index:2;max-width:74%}.armenia-hero h1{font-size:31px!important;color:#5a2e25}.armenia-hero p{color:#7b5c50!important}.armenia-mark{display:none!important}.armenia-hero:after{content:'';position:absolute;right:-8px;bottom:-2px;width:190px;height:150px;background-repeat:no-repeat;background-size:contain;background-position:right bottom;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 170'%3E%3Ccircle cx='171' cy='35' r='23' fill='%23e9a45d' opacity='.75'/%3E%3Cpath d='M22 151L92 58l28 37 22-29 62 85z' fill='%23c77a61'/%3E%3Cpath d='M64 95l28-37 16 22-10 5-7-9-12 20z' fill='%23fff2e5' opacity='.92'/%3E%3Cpath d='M113 104l29-38 18 22-8 4-10-11-15 24z' fill='%23fff2e5' opacity='.86'/%3E%3Cpath d='M5 151h210v19H5z' fill='%23a95b49' opacity='.28'/%3E%3C/svg%3E")}
+.article-cats{margin:0 -2px}.article-cats button{border:0!important;background:#fffefa!important;box-shadow:0 3px 12px rgba(70,48,34,.045)}.article-cats button.active{background:#2e2925!important;color:#fff!important}.article-grid{grid-template-columns:1fr 1fr!important;gap:10px!important}.article-card{min-height:224px!important;padding:0!important;overflow:hidden;border:0!important;box-shadow:0 7px 24px rgba(70,48,34,.06)!important;background:#fffefa!important}.article-card:before{content:'';display:block;height:96px;background:var(--art,linear-gradient(135deg,#e5b78e,#bd6c53));background-size:cover;background-position:center}.article-card:nth-child(4n+1){--art:linear-gradient(155deg,#efc48f,#b9614d)}.article-card:nth-child(4n+2){--art:linear-gradient(155deg,#b8c6b1,#6d8f7d)}.article-card:nth-child(4n+3){--art:linear-gradient(155deg,#d9b0a8,#9a6670)}.article-card:nth-child(4n){--art:linear-gradient(155deg,#d8c3a6,#9f7d5d)}.article-card>span,.article-card h2,.article-card p,.article-card strong{margin-left:14px!important;margin-right:14px!important}.article-card>span{margin-top:12px!important}.article-card h2{font-size:17px!important;margin-top:8px!important}.article-card p{font-size:10px!important;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.article-card strong{padding-bottom:14px}.article-screen{max-width:680px}.fact-strip>div{border:0!important;box-shadow:0 4px 15px rgba(70,48,34,.05)}.source-card{background:#eee6dc!important}
+.v6-bottom-nav{max-width:480px!important;border-top:0!important;box-shadow:0 -10px 30px rgba(70,48,34,.07)!important}.v6-bottom-nav button{min-height:56px!important}.v6-bottom-nav button.active .nav-icon{background:#f0e6dc!important}.bottom-nav{border-top:0!important}
+.card,.vocab-card{border:0!important;box-shadow:0 6px 20px rgba(70,48,34,.055)!important}.vocab-card{border-radius:22px!important}.vocab-hy{font-size:23px!important}.primary{background:linear-gradient(145deg,#bc674e,#a34f3d)!important}.review-card{border:0!important}.sync-pill{top:max(7px,env(safe-area-inset-top))!important}
+@media(max-width:390px){.v6-screen{padding-left:14px!important;padding-right:14px!important}.article-grid{grid-template-columns:1fr 1fr!important}.article-card{min-height:214px!important}.article-card:before{height:88px}.armenia-hero{min-height:218px;padding:19px!important}.armenia-hero h1{font-size:28px!important}.armenia-hero>div:first-child{max-width:78%}}
+</style>`;
+
+  const visualEnhancer=`<script id="hayeren-visual-v62">(function(){
+    function svg(kind){var s={history:'%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180"%3E%3Crect width="400" height="180" fill="%23d98763"/%3E%3Ccircle cx="320" cy="42" r="28" fill="%23f3c47f"/%3E%3Cpath d="M0 180L135 38l54 64 38-45 118 123z" fill="%239b4d42"/%3E%3Cpath d="M99 76l36-38 22 26-13 6-10-13-19 20z" fill="%23f9e8d8"/%3E%3C/svg%3E',culture:'%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180"%3E%3Crect width="400" height="180" fill="%2389a28f"/%3E%3Ccircle cx="85" cy="90" r="56" fill="none" stroke="%23f2d7ad" stroke-width="12"/%3E%3Cpath d="M40 90h90M85 45v90" stroke="%23f2d7ad" stroke-width="8"/%3E%3Cpath d="M250 38c42 16 64 45 64 87-37-6-70-3-102 9 14-41 26-73 38-96z" fill="%23e6c79b"/%3E%3C/svg%3E',places:'%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180"%3E%3Crect width="400" height="180" fill="%23d8b38f"/%3E%3Cpath d="M30 145h340v35H30z" fill="%23a75d4a"/%3E%3Cpath d="M80 145V70h50v75m35 0V48h70v97m35 0V82h52v63" fill="%23f1dfc7"/%3E%3Cpath d="M194 48l6-18 6 18" fill="%23a75d4a"/%3E%3C/svg%3E',science:'%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180"%3E%3Crect width="400" height="180" fill="%23b68da0"/%3E%3Cpath d="M120 25c100 45 55 85 160 130M280 25c-100 45-55 85-160 130" fill="none" stroke="%23f5e7df" stroke-width="9"/%3E%3Cpath d="M143 48h114M130 75h140M130 105h140M143 132h114" stroke="%23f5e7df" stroke-width="6" opacity=".8"/%3E%3C/svg%3E'};return 'url("data:image/svg+xml,'+(s[kind]||s.history)+'")'}
+    function enhance(){
+      document.querySelectorAll('.article-card').forEach(function(el,i){if(el.dataset.pic)return;var t=(el.textContent||'').toLowerCase(),k=/днк|генет/.test(t)?'science':/ереван|эчмиадзин|гюмри|гегард|мест/.test(t)?'places':/дудук|лаваш|хачкар|алфавит|кочари|культур/.test(t)?'culture':'history';el.style.setProperty('--art',svg(k));el.dataset.pic='1'});
+      document.querySelectorAll('.lesson-card').forEach(function(el){if(el.dataset.polished)return;var n=el.querySelector('.lesson-node');if(n&&!/✓/.test(n.textContent||'')){var title=(el.textContent||'').toLowerCase();n.textContent=/числ/.test(title)?'123':/еда|кафе|ресторан/.test(title)?'🍽':/семь/.test(title)?'♥':/транспорт|аэропорт/.test(title)?'↗':/привет|знаком|вежлив/.test(title)?'Բ':'Ա'}el.dataset.polished='1'});
+    }
+    new MutationObserver(enhance).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',enhance);setTimeout(enhance,700);
+  })();</script>`;
+
+  html=html.replace('<head>','<head>'+runtimePrelude+polish);
+  html=html.replace('</body>',visualEnhancer+'</body>');
   return html;
 }
 
-let html;
-try { html=loadHtml(); }
-catch(e){ console.error('Payload error:',e); html='<!doctype html><html lang="ru"><meta charset="utf-8"><body><h1>Hayeren обновляется</h1><p>Попробуйте открыть приложение ещё раз через минуту.</p></body></html>'; }
-
-const manifest=JSON.stringify({
-  name:'Hayeren — Армянский с нуля',
-  short_name:'Hayeren',
-  start_url:'/',
-  display:'standalone',
-  background_color:'#f7f1e9',
-  theme_color:'#f7f1e9',
-  lang:'ru'
-});
-
-const server=http.createServer((req,res)=>{
-  if(req.url==='/health'){
-    res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
-    return res.end(JSON.stringify({ok:true,htmlBytes:Buffer.byteLength(html),v:'6.1',fallback:html.includes('Hayeren обновляется'),runtimeShim:html.includes("NODE_ENV='production'")}));
-  }
-  if(req.url==='/manifest.webmanifest'){
-    res.writeHead(200,{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'public, max-age=3600'});
-    return res.end(manifest);
-  }
-  res.writeHead(200,{
-    'Content-Type':'text/html; charset=utf-8',
-    'Cache-Control':'no-store, max-age=0',
-    'X-Content-Type-Options':'nosniff',
-    'Referrer-Policy':'strict-origin-when-cross-origin'
-  });
-  res.end(html);
-});
-server.listen(process.env.PORT||10000,'0.0.0.0',()=>console.log('Hayeren v6.1 server ready'));
+let html;try{html=loadHtml()}catch(e){console.error('Payload error:',e);html='<!doctype html><html lang="ru"><meta charset="utf-8"><body><h1>Hayeren обновляется</h1><p>Попробуйте открыть приложение ещё раз через минуту.</p></body></html>'}
+const manifest=JSON.stringify({name:'Hayeren — Армянский с нуля',short_name:'Hayeren',start_url:'/',display:'standalone',background_color:'#f7f4ee',theme_color:'#f7f4ee',lang:'ru'});
+const server=http.createServer((req,res)=>{if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});return res.end(JSON.stringify({ok:true,htmlBytes:Buffer.byteLength(html),v:'6.2',fallback:html.includes('Hayeren обновляется'),runtimeShim:html.includes("NODE_ENV='production'"),visualPolish:html.includes('hayeren-polish-v62')}))}if(req.url==='/manifest.webmanifest'){res.writeHead(200,{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'public, max-age=3600'});return res.end(manifest)}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, max-age=0','X-Content-Type-Options':'nosniff','Referrer-Policy':'strict-origin-when-cross-origin'});res.end(html)});
+server.listen(process.env.PORT||10000,'0.0.0.0',()=>console.log('Hayeren v6.2 polished server ready'));
