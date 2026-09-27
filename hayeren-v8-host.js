@@ -2,6 +2,7 @@ const http = require('http');
 
 const VERSION = '9.2';
 const UPSTREAM = 'https://hayeren-v6-live.onrender.com';
+const APP_URL = process.env.APP_URL || 'https://hayeren-v8-live.onrender.com';
 let html = '';
 let lastLoad = null;
 let selfTest = { ok: false, at: null, details: [] };
@@ -237,6 +238,25 @@ async function runSelfTest(){
   console.log('HAYEREN_SELFTEST '+JSON.stringify(selfTest));
 }
 
+async function syncTelegramMenu(){
+  const token = String(process.env.BOT_TOKEN || '').trim();
+  if(!token){ console.warn('TELEGRAM_MENU_SKIP no token'); return false; }
+  try{
+    const me = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const meJson = await me.json();
+    if(!me.ok || !meJson.ok) throw new Error('getMe failed');
+    const r = await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({menu_button:{type:'web_app',text:'Открыть Hayeren',web_app:{url:APP_URL}}})
+    });
+    const j = await r.json();
+    if(!r.ok || !j.ok) throw new Error(j.description || ('telegram '+r.status));
+    console.log('TELEGRAM_MENU_OK bot=@'+meJson.result.username+' url='+APP_URL);
+    return true;
+  }catch(e){ console.error('TELEGRAM_MENU_ERROR', e.message); return false; }
+}
+
 const manifest = JSON.stringify({name:'Hayeren — Армянский с нуля',short_name:'Hayeren',start_url:'/',display:'standalone',background_color:'#f7f4ee',theme_color:'#f7f4ee',lang:'ru'});
 const sw = `self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(/hayeren/i.test(k))await caches.delete(k);await self.clients.claim()})()));`;
 
@@ -281,6 +301,7 @@ const server=http.createServer(async(req,res)=>{
   try{await loadUpstream()}catch(e){console.error('LOAD_UPSTREAM_ERROR',e)}
   server.listen(process.env.PORT||10000,'0.0.0.0',()=>console.log('Hayeren final '+VERSION+' ready'));
   await runSelfTest();
+  await syncTelegramMenu();
   setInterval(()=>loadUpstream().catch(e=>console.warn('UPSTREAM_REFRESH',e.message)),5*60*1000).unref();
   setInterval(()=>runSelfTest().catch(()=>{}),15*60*1000).unref();
 })();
