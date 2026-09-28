@@ -24,7 +24,7 @@ MODEL_FILES = ("model.bin", "config.json", "shared_vocabulary.json", "source.spm
 
 def download_file(repo, name, target):
     url = f"https://huggingface.co/{repo}/resolve/main/{name}?download=true"
-    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.3"})
+    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.4"})
     with urllib.request.urlopen(req, timeout=180) as response, open(target, "wb") as f:
         shutil.copyfileobj(response, f)
     if target.stat().st_size < 50:
@@ -111,27 +111,32 @@ class Engine:
                     return False
         return True
 
+    def _encode_source(self, text, direction):
+        # opus-mt-ru-hy is multilingual on the target side. MarianTokenizer does
+        # NOT pass >>hye<< through SentencePiece: it prepends it as a vocabulary
+        # token, then SentencePiece-encodes only the sentence. Doing sp.encode on
+        # the combined string corrupts this marker and causes repetitions/garbage.
+        pieces = self.source_sp.encode(text, out_type=str)
+        if direction == "ru-hy":
+            pieces = [">>hye<<"] + pieces
+        if not pieces or pieces[-1] != "</s>":
+            pieces.append("</s>")
+        return pieces
+
     def translate(self, text, source, target):
         direction = f"{source}-{target}"
         if direction not in MODEL_SPECS:
             raise ValueError("unsupported language pair")
         with self.lock:
             self._load(direction)
-            # RU->HY has two target variants in the source model (Armenian script and
-            # Latin transliteration), so explicitly select standard Armenian script.
-            model_input = f">>hye<< {text}" if direction == "ru-hy" else text
-            source_tokens = self.source_sp.encode(model_input, out_type=str)
-            # The Transformers-converted Marian checkpoint expects the source EOS token.
-            if not source_tokens or source_tokens[-1] != "</s>":
-                source_tokens.append("</s>")
-            max_output = min(128, max(24, len(source_tokens) * 5))
+            source_tokens = self._encode_source(text, direction)
+            max_output = min(128, max(20, len(source_tokens) * 4))
             result = self.translator.translate_batch(
                 [source_tokens],
-                beam_size=2,
+                beam_size=4,
                 max_decoding_length=max_output,
-                repetition_penalty=1.08,
+                repetition_penalty=1.05,
                 no_repeat_ngram_size=3,
-                end_token="</s>",
             )[0]
             tokens = [t for t in result.hypotheses[0] if t not in ("<s>", "</s>")]
             out = self.target_sp.decode(tokens).strip()
@@ -149,8 +154,9 @@ ENGINE = Engine()
 def selftest():
     tests = [
         ("добрый день", "ru", "hy", ("բարի", "օր")),
-        ("Բարի օր", "hy", "ru", ("добр", "день")),
+        ("спасибо", "ru", "hy", ("շնորհ",)),
         ("где находится железнодорожный вокзал", "ru", "hy", ("որտեղ", "կայարան")),
+        ("Բարի օր", "hy", "ru", ("добр", "день")),
     ]
     results = []
     ok = True
@@ -158,21 +164,18 @@ def selftest():
         try:
             out = ENGINE.translate(text, source, target)
             low = out.lower()
-            script_ok = ENGINE._valid_script(out, target)
-            quality_ok = ENGINE._not_pathological(out)
-            semantic_ok = any(h in low for h in semantic_hints)
-            valid = script_ok and quality_ok and semantic_ok
-            results.append({"source": source, "target": target, "ok": valid, "sample": out[:160]})
+            valid = ENGINE._valid_script(out, target) and ENGINE._not_pathological(out) and any(h in low for h in semantic_hints)
+            results.append({"source": source, "target": target, "ok": valid, "input": text, "sample": out[:180]})
             ok = ok and valid
         except Exception as exc:
-            results.append({"source": source, "target": target, "ok": False, "error": str(exc)})
+            results.append({"source": source, "target": target, "ok": False, "input": text, "error": str(exc)})
             ok = False
     print("OFFLINE_SELFTEST " + json.dumps({"ok": ok, "results": results}, ensure_ascii=False), flush=True)
     return ok
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HayerenOffline/1.3"
+    server_version = "HayerenOffline/1.4"
 
     def log_message(self, fmt, *args):
         print("HTTP " + (fmt % args), flush=True)
@@ -193,7 +196,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.split("?", 1)[0] == "/health":
             ready = all((MODELS_ROOT / d / ".ready").exists() for d in MODEL_SPECS)
-            return self._json({"ok": ready, "service": "hayeren-offline-translator", "engine": "Helsinki-NLP OPUS-MT + CTranslate2 INT8"}, 200 if ready else 503)
+            return self._json({"ok": ready, "service": "hayeren-offline-translator", "engine": "Helsinki-NLP OPUS-MT + CTranslate2 INT8", "version": "1.4"}, 200 if ready else 503)
         return self._json({"error": "not found"}, 404)
 
     def do_POST(self):
