@@ -24,7 +24,7 @@ MODEL_FILES = ("model.bin", "config.json", "shared_vocabulary.json", "source.spm
 
 def download_file(repo, name, target):
     url = f"https://huggingface.co/{repo}/resolve/main/{name}?download=true"
-    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.2"})
+    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.3"})
     with urllib.request.urlopen(req, timeout=180) as response, open(target, "wb") as f:
         shutil.copyfileobj(response, f)
     if target.stat().st_size < 50:
@@ -117,10 +117,11 @@ class Engine:
             raise ValueError("unsupported language pair")
         with self.lock:
             self._load(direction)
-            # These checkpoints were converted through Transformers. Marian's tokenizer
-            # supplies </s> as a special source token; raw SentencePiece does not, so we
-            # must append it explicitly or decoding may never terminate correctly.
-            source_tokens = self.source_sp.encode(text, out_type=str)
+            # RU->HY has two target variants in the source model (Armenian script and
+            # Latin transliteration), so explicitly select standard Armenian script.
+            model_input = f">>hye<< {text}" if direction == "ru-hy" else text
+            source_tokens = self.source_sp.encode(model_input, out_type=str)
+            # The Transformers-converted Marian checkpoint expects the source EOS token.
             if not source_tokens or source_tokens[-1] != "</s>":
                 source_tokens.append("</s>")
             max_output = min(128, max(24, len(source_tokens) * 5))
@@ -171,7 +172,7 @@ def selftest():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HayerenOffline/1.2"
+    server_version = "HayerenOffline/1.3"
 
     def log_message(self, fmt, *args):
         print("HTTP " + (fmt % args), flush=True)
