@@ -1,102 +1,85 @@
 const http=require('http');
+const fs=require('fs');
+const zlib=require('zlib');
+const path=require('path');
 const {URL}=require('url');
 
-const VERSION='9.1';
-const UPSTREAM=process.env.UPSTREAM||'https://hayeren-v8-live.onrender.com';
-const PUBLIC_URL=process.env.PUBLIC_URL||'';
-const BOT_TOKEN=process.env.BOT_TOKEN||'';
+const VERSION='10.0';
+const PORT=process.env.PORT||10000;
+const PUBLIC_URL=process.env.PUBLIC_URL||'https://hayeren-v9-live.onrender.com';
 const cache=new Map();
 
-const media={
-  ararat:'https://excursionmania.com/cdn-cgi/image/quality%3D75%2Cformat%3Dwebp%2Cw%3Dauto%2Ch%3Dauto%2Cfit%3Dscale-down%2Ctrim%3Dborder/https%3A/excursionmania.com/uploads/blog/gallery/5721/1767703349.png',
-  yerevan:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg/1280px-Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg',
-  geghard:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg',
-  sevan:'https://extraguide.ru/images/t/2e7bbd9ea5a337f578992ff1fa75c2c0af8f39a2.jpg',
-  erebuni:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg/1280px-Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg',
-  alphabet:'https://excursionmania.com/cdn-cgi/image/quality%3D75%2Cformat%3Dwebp%2Cw%3Dauto%2Ch%3Dauto%2Cfit%3Dscale-down%2Ctrim%3Dborder/https%3A/excursionmania.com/uploads/blog/gallery/5721/1767703349.png',
-  duduk:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg',
-  lavash:'https://extraguide.ru/images/t/2e7bbd9ea5a337f578992ff1fa75c2c0af8f39a2.jpg',
-  khachkar:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg'
+function norm(s){return String(s||'').toLowerCase().replace(/[?!.,;:()«»“”"'`]/g,'').replace(/[-–—]/g,' ').replace(/\s+/g,' ').trim()}
+
+const curated={
+ 'я люблю тебя':['Ես սիրում եմ քեզ','Ес сирум ем кез','Я люблю тебя'],
+ 'люблю тебя':['Ես սիրում եմ քեզ','Ес сирум ем кез','Я люблю тебя'],
+ 'я тебя люблю':['Ես քեզ սիրում եմ','Ес кез сирум ем','Я тебя люблю'],
+ 'я очень тебя люблю':['Ես քեզ շատ եմ սիրում','Ес кез шат ем сирум','Я очень тебя люблю'],
+ 'привет':['Բարև','Барев','Привет'],
+ 'здравствуйте':['Բարև ձեզ','Барев дзез','Здравствуйте'],
+ 'доброе утро':['Բարի լույս','Бари луйс','Доброе утро'],
+ 'добрый вечер':['Բարի երեկո','Бари ерэко','Добрый вечер'],
+ 'спокойной ночи':['Բարի գիշեր','Бари гишер','Спокойной ночи'],
+ 'до свидания':['Ցտեսություն','Цтесутюн','До свидания'],
+ 'спасибо':['Շնորհակալություն','Шноракалуцюн','Спасибо'],
+ 'большое спасибо':['Շատ շնորհակալություն','Шат шноракалуцюн','Большое спасибо'],
+ 'пожалуйста':['Խնդրեմ','Хндрем','Пожалуйста'],
+ 'извините':['Ներեցեք','Нерецек','Извините'],
+ 'да':['Այո','Айо','Да'], 'нет':['Ոչ','Воч','Нет'],
+ 'как дела':['Ինչպե՞ս ես','Инчпес ес?','Как дела?'],
+ 'как вы':['Ինչպե՞ս եք','Инчпес эк?','Как вы?'],
+ 'как ты':['Ինչպե՞ս ես','Инчпес ес?','Как ты?'],
+ 'хорошо':['Լավ','Лав','Хорошо'],
+ 'у меня все хорошо':['Լավ եմ','Лав эм','У меня всё хорошо'],
+ 'я понимаю':['Ես հասկանում եմ','Ес хасканум эм','Я понимаю'],
+ 'я не понимаю':['Ես չեմ հասկանում','Ес чем хасканум','Я не понимаю'],
+ 'повторите пожалуйста':['Կրկնեք, խնդրում եմ','Кркнек, хндрум эм','Повторите, пожалуйста'],
+ 'говорите медленнее пожалуйста':['Ավելի դանդաղ խոսեք, խնդրում եմ','Авели дандал хосек, хндрум эм','Говорите медленнее, пожалуйста'],
+ 'как вас зовут':['Ի՞նչ է ձեր անունը','Инч э дзер ануны?','Как вас зовут?'],
+ 'как тебя зовут':['Ի՞նչ է քո անունը','Инч э ко ануны?','Как тебя зовут?'],
+ 'где туалет':['Որտե՞ղ է զուգարանը','Вортех э зугараны?','Где туалет?'],
+ 'где находится центр':['Որտե՞ղ է կենտրոնը','Вортех э кентроны?','Где находится центр?'],
+ 'сколько стоит':['Որքա՞ն արժե','Воркан арже?','Сколько стоит?'],
+ 'мне нужно такси':['Ինձ տաքսի է պետք','Индз такси э петк','Мне нужно такси'],
+ 'мне нужен врач':['Ինձ բժիշկ է պետք','Индз бжишк э петк','Мне нужен врач'],
+ 'помогите пожалуйста':['Օգնեք, խնդրում եմ','Огнек, хндрум эм','Помогите, пожалуйста'],
+ 'вы говорите по русски':['Դուք ռուսերեն խոսո՞ւմ եք','Дук русերեն хосум эк?','Вы говорите по-русски?'],
+ 'я говорю по русски':['Ես ռուսերեն եմ խոսում','Ес русерен эм хосум','Я говорю по-русски'],
+ 'я из казахстана':['Ես Ղազախստանից եմ','Ес Газахстаниц эм','Я из Казахстана'],
+ 'я из россии':['Ես Ռուսաստանից եմ','Ес Русастаниц эм','Я из России'],
+ 'я хочу кофе':['Ես սուրճ եմ ուզում','Ес сурч эм узум','Я хочу кофе'],
+ 'я хочу воды':['Ես ջուր եմ ուզում','Ес джур эм узум','Я хочу воды'],
+ 'где гостиница':['Որտե՞ղ է հյուրանոցը','Вортех э хюраноцы?','Где гостиница?'],
+ 'где аэропорт':['Որտե՞ղ է օդանավակայանը','Вортех э оданавакаяны?','Где аэропорт?'],
+ 'армения':['Հայաստան','Айастан','Армения'], 'ереван':['Երևան','Ереван','Ереван']
 };
+const reverse={}; for(const v of Object.values(curated)) reverse[norm(v[0])]=v;
+const charMap={'Ա':'А','ա':'а','Բ':'Б','բ':'б','Գ':'Г','գ':'г','Դ':'Д','դ':'д','Ե':'Е','ե':'е','Զ':'З','զ':'з','Է':'Э','է':'э','Ը':'Ы','ը':'ы','Թ':'Т','թ':'т','Ժ':'Ж','ժ':'ж','Ի':'И','ի':'и','Լ':'Л','լ':'л','Խ':'Х','խ':'х','Ծ':'Ц','ծ':'ц','Կ':'К','կ':'к','Հ':'Х','հ':'х','Ձ':'Дз','ձ':'дз','Ղ':'Гх','ղ':'гх','Ճ':'Ч','ճ':'ч','Մ':'М','մ':'м','Յ':'Й','յ':'й','Ն':'Н','ն':'н','Շ':'Ш','շ':'ш','Ո':'Во','ո':'о','Չ':'Ч','չ':'ч','Պ':'П','պ':'п','Ջ':'Дж','ջ':'дж','Ռ':'Р','ռ':'р','Ս':'С','ս':'с','Վ':'В','վ':'в','Տ':'Т','տ':'т','Ր':'Р','ր':'р','Ց':'Ц','ց':'ц','Ւ':'В','ւ':'в','Փ':'П','փ':'п','Ք':'К','ք':'к','Օ':'О','օ':'о','Ֆ':'Ф','ֆ':'ф'};
+function sound(x){let s=String(x||'').replace(/Ու/g,'У').replace(/ու/g,'у').replace(/Եվ/g,'Ев').replace(/և/g,'ев');return [...s].map(c=>charMap[c]??c).join('').replace(/\s+/g,' ').trim()}
+function suspicious(out,source,target){const n=norm(out);if(!out||out.length>1600)return true;if(['չատլախ','чатлах','undefined','null'].some(x=>n.includes(x)))return true;if(source==='ru'&&target==='hy'){if(!/[Ա-Ֆա-ֆև]/.test(out))return true;if((out.match(/[А-Яа-яЁё]/g)||[]).length>3)return true}if(source==='hy'&&target==='ru'){if(!/[А-Яа-яЁё]/.test(out))return true;if((out.match(/[Ա-Ֆա-ֆև]/g)||[]).length>3)return true}return false}
+async function google(text,source,target){const u=new URL('https://translate.googleapis.com/translate_a/single');u.searchParams.set('client','gtx');u.searchParams.set('sl',source);u.searchParams.set('tl',target);u.searchParams.set('dt','t');u.searchParams.set('q',text);const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),7000);try{const r=await fetch(u,{signal:ctrl.signal,headers:{'Accept':'application/json','User-Agent':'Hayeren/'+VERSION}});if(!r.ok)throw new Error('translator '+r.status);const d=await r.json();const out=Array.isArray(d?.[0])?d[0].map(x=>x?.[0]||'').join('').trim():'';if(!out)throw new Error('translator empty');return out}finally{clearTimeout(timer)}}
+async function translate(text,source,target){text=String(text||'').trim();const exact=source==='ru'?curated[norm(text)]:reverse[norm(text)];if(exact)return{translated:target==='hy'?exact[0]:exact[2],ruSound:exact[1],provider:'Проверено Hayeren',verified:true,confidence:1};const key=`${source}|${target}|${norm(text)}`;if(cache.has(key))return cache.get(key);const out=await google(text,source,target);if(suspicious(out,source,target))throw new Error('Перевод не прошёл проверку качества');const result={translated:out,ruSound:target==='hy'?sound(out):sound(text),provider:'Google Translate',verified:false,confidence:.9};cache.set(key,result);if(cache.size>500)cache.delete(cache.keys().next().value);return result}
 
-const fallback=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#6f4037"/><stop offset="1" stop-color="#bd684e"/></linearGradient></defs><rect width="1200" height="675" fill="url(#g)"/><circle cx="1010" cy="130" r="78" fill="#efb56f" opacity=".9"/><path d="M0 675 330 205l155 190 118-139 352 419z" fill="#4c2d28"/><text x="64" y="590" fill="white" font-size="54" font-family="system-ui">Հայաստան · Armenia</text></svg>`);
+const media={
+ ararat:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Mount_Ararat_and_the_Yerevan_skyline.jpg/1280px-Mount_Ararat_and_the_Yerevan_skyline.jpg',
+ yerevan:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg/1280px-Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg',
+ geghard:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Geghard_Monastery_Armenia.jpg/1280px-Geghard_Monastery_Armenia.jpg',
+ sevan:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Lake_Sevan_Armenia.jpg/1280px-Lake_Sevan_Armenia.jpg'
+};
+const fallback=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675"><defs><linearGradient id="g"><stop stop-color="#6f4037"/><stop offset="1" stop-color="#bd684e"/></linearGradient></defs><rect width="1200" height="675" fill="url(#g)"/><circle cx="1010" cy="130" r="78" fill="#efb56f"/><path d="M0 675 330 205l155 190 118-139 352 419z" fill="#4c2d28"/><text x="64" y="590" fill="white" font-size="54" font-family="system-ui">Հայաստան · Armenia</text></svg>`);
+async function serveMedia(name,res){if(cache.has('media:'+name)){const c=cache.get('media:'+name);res.writeHead(200,{'Content-Type':c.type,'Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*'});return res.end(c.body)}const url=media[name];if(!url){res.writeHead(404);return res.end('not found')}try{const r=await fetch(url,{redirect:'follow',headers:{'User-Agent':'Hayeren/'+VERSION,'Accept':'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'}});if(!r.ok)throw new Error('image '+r.status);const type=r.headers.get('content-type')||'image/jpeg',body=Buffer.from(await r.arrayBuffer());if(!type.startsWith('image/')||body.length<5000)throw new Error('bad image');cache.set('media:'+name,{type,body});res.writeHead(200,{'Content-Type':type,'Content-Length':body.length,'Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*'});return res.end(body)}catch(e){console.error('MEDIA',name,e.message);res.writeHead(200,{'Content-Type':'image/svg+xml; charset=utf-8','Content-Length':fallback.length,'Cache-Control':'no-store'});return res.end(fallback)}}
 
-function chooseImage(text){
-  const t=String(text||'').toLowerCase();
-  if(/эребун|эрибун|урарт/.test(t))return'/media/erebuni';
-  if(/алфавит|маштоц|письмен/.test(t))return'/media/alphabet';
-  if(/дудук/.test(t))return'/media/duduk';
-  if(/лаваш|хлеб|тонир/.test(t))return'/media/lavash';
-  if(/хачкар|крест-кам|крест кам/.test(t))return'/media/khachkar';
-  if(/севан|озер|природ/.test(t))return'/media/sevan';
-  if(/гегард|монастыр|эчмиадзин|звартноц|архитект/.test(t))return'/media/geghard';
-  if(/ереван|столиц|площад/.test(t))return'/media/yerevan';
-  return'/media/ararat';
-}
-
-const inject=`<style id="hayeren-v9-media">
-.armenia-hero:before{background-image:linear-gradient(90deg,rgba(28,20,17,.76),rgba(28,20,17,.42) 55%,rgba(28,20,17,.08)),url('/media/ararat')!important;background-size:cover!important;background-position:center!important}
-.article-card .v7-photo,.article-detail-photo{background:#e9ded4!important}
-.v9-photo-note{font-size:9px;color:#8b7c70;margin:7px 14px 13px;line-height:1.25}
-</style><script id="hayeren-v9-media-runtime">(()=>{const pick=${chooseImage.toString()};function apply(){document.querySelectorAll('.article-card').forEach(c=>{const i=c.querySelector('.v7-photo');if(i){const src=pick(c.textContent);if(i.getAttribute('src')!==src)i.setAttribute('src',src);i.onerror=()=>{i.onerror=null;i.src='/media/ararat'}}});const d=document.querySelector('.article-screen');if(d){const i=d.querySelector('.article-detail-photo');if(i){const src=pick(d.textContent);if(i.getAttribute('src')!==src)i.setAttribute('src',src);i.onerror=()=>{i.onerror=null;i.src='/media/ararat'}}}document.querySelectorAll('.article-card').forEach(c=>{if(c.dataset.v9credit)return;c.dataset.v9credit='1';const n=document.createElement('div');n.className='v9-photo-note';n.textContent='Фото: Wikimedia Commons · свободные лицензии';const img=c.querySelector('.v7-photo');if(img)img.insertAdjacentElement('afterend',n)})}new MutationObserver(apply).observe(document.documentElement,{subtree:true,childList:true});document.addEventListener('DOMContentLoaded',apply);setTimeout(apply,250);setTimeout(apply,900);window.__HAYEREN_MEDIA_VERSION__='9.1'})();</script>`;
-
-async function serveMedia(name,res){
-  if(cache.has(name)){const c=cache.get(name);res.writeHead(200,{'Content-Type':c.type,'Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*'});return res.end(c.body)}
-  const url=media[name];
-  if(!url){res.writeHead(404);return res.end('not found')}
-  try{
-    const r=await fetch(url,{redirect:'follow',headers:{'User-Agent':'Hayeren/9.1 educational app','Accept':'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'}});
-    if(!r.ok)throw new Error('image '+r.status);
-    const type=r.headers.get('content-type')||'image/jpeg';
-    if(!type.startsWith('image/'))throw new Error('bad type '+type);
-    const body=Buffer.from(await r.arrayBuffer());
-    if(body.length<5000)throw new Error('image too small');
-    cache.set(name,{type,body});
-    res.writeHead(200,{'Content-Type':type,'Content-Length':body.length,'Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*','X-Hayeren-Image':name});
-    return res.end(body);
-  }catch(e){
-    console.error('media',name,e.message);
-    res.writeHead(200,{'Content-Type':'image/svg+xml; charset=utf-8','Content-Length':fallback.length,'Cache-Control':'no-store','X-Hayeren-Image-Fallback':'1'});
-    return res.end(fallback);
-  }
-}
-
-async function forward(req,res){
-  const target=new URL(req.url,UPSTREAM);
-  const headers={...req.headers};
-  delete headers.host;delete headers['content-length'];delete headers.connection;
-  const chunks=[];for await(const c of req)chunks.push(c);
-  const body=chunks.length?Buffer.concat(chunks):undefined;
-  const r=await fetch(target,{method:req.method,headers,body:(req.method==='GET'||req.method==='HEAD')?undefined:body,redirect:'manual'});
-  const outHeaders={};
-  r.headers.forEach((v,k)=>{if(!['content-encoding','content-length','transfer-encoding','connection'].includes(k.toLowerCase()))outHeaders[k]=v});
-  let data=Buffer.from(await r.arrayBuffer());
-  const type=r.headers.get('content-type')||'';
-  if(req.method==='GET'&&type.includes('text/html')){
-    let text=data.toString('utf8');
-    text=text.includes('</body>')?text.replace('</body>',inject+'</body>'):text+inject;
-    data=Buffer.from(text);
-    outHeaders['content-type']='text/html; charset=utf-8';
-    outHeaders['cache-control']='no-store,max-age=0';
-    outHeaders['x-hayeren-version']=VERSION;
-  }
-  res.writeHead(r.status,outHeaders);res.end(data);
-}
-
-async function setTelegramMenu(){
-  if(!BOT_TOKEN||!PUBLIC_URL)return;
-  try{
-    const r=await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setChatMenuButton`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_button:{type:'web_app',text:'Открыть приложение',web_app:{url:PUBLIC_URL}}})});
-    const j=await r.json();console.log('Telegram menu',j.ok?'updated':'failed',j.description||'');
-  }catch(e){console.error('Telegram menu update',e.message)}
-}
-
-const server=http.createServer(async(req,res)=>{
-  try{
-    const u=new URL(req.url,'http://localhost');
-    if(u.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});return res.end(JSON.stringify({ok:true,version:VERSION,upstream:UPSTREAM,media:Object.keys(media)}))}
-    if(u.pathname.startsWith('/media/'))return serveMedia(u.pathname.split('/').pop(),res);
-    return await forward(req,res);
-  }catch(e){console.error(e);res.writeHead(502,{'Content-Type':'text/plain; charset=utf-8'});res.end('Hayeren proxy error')}
-});
-server.listen(process.env.PORT||10000,'0.0.0.0',()=>{console.log('Hayeren v9 production proxy ready');setTelegramMenu()});
+function loadPayload(){const dir=path.join(__dirname,'hayeren-v6-payload');const parts=['1.txt','2.txt','3.txt','4.txt'];for(const n of parts)if(!fs.existsSync(path.join(dir,n)))throw new Error('Missing payload '+n);return zlib.gunzipSync(Buffer.from(parts.map(n=>fs.readFileSync(path.join(dir,n),'utf8').trim()).join(''),'base64')).toString('utf8')}
+const runtimeShim=`<script>(function(){window.process=window.process||{env:{}};window.process.env=window.process.env||{};window.process.env.NODE_ENV='production';})();</script>`;
+const polishCss=`<style id="hayeren-final-css">:root{--bg:#f7f4ee!important;--surface:#fffefa!important;--surface2:#f0ebe2!important;--text:#241f1a!important;--muted:#7a7068!important;--brand:#b75d45!important;--brand2:#d69a52!important;--line:#e8e0d6!important}.app-shell{max-width:480px!important}.v6-next{background:linear-gradient(145deg,#bd684e,#914337)!important;border-radius:28px!important}.v6-quick button,.course-progress-card>div,.course-screen-v6 .lesson-card,.translate-box,.translation-result,.card,.vocab-card{border:0!important;box-shadow:0 6px 20px rgba(70,48,34,.055)!important}.v6-bottom-nav{max-width:480px!important}.armenia-hero{position:relative!important;overflow:hidden!important;min-height:250px!important;border-radius:28px!important;padding:22px!important;background:#2f2925!important;color:#fff!important}.armenia-hero>div:first-child{position:relative;z-index:3;max-width:76%!important}.armenia-hero h1{color:#fff!important}.armenia-hero p{color:rgba(255,255,255,.86)!important}.armenia-hero:before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(28,20,17,.78),rgba(28,20,17,.46) 54%,rgba(28,20,17,.08)),url('/media/ararat');background-size:cover;background-position:center}.armenia-mark{display:none!important}.article-card{padding:0!important;overflow:hidden!important}.article-card .v10-photo{width:100%;height:112px;object-fit:cover;display:block}.article-card>span,.article-card h2,.article-card p,.article-card strong{margin-left:14px!important;margin-right:14px!important}.article-detail-photo{width:100%;height:210px;object-fit:cover;border-radius:22px;margin:6px 0 18px}.endless-zone{margin:26px 0 10px;padding:20px 15px 22px;border-radius:28px;background:linear-gradient(160deg,#2e2926,#44322c 55%,#6e3d31);color:#fff;box-shadow:0 18px 44px rgba(66,38,29,.16)}.endless-zone h2{font-size:25px;margin:7px 0}.endless-path{display:grid;gap:9px}.mastery-level{width:100%;display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;text-align:left;padding:10px 12px;border-radius:18px;background:rgba(255,255,255,.07);color:#fff;border:1px solid rgba(255,255,255,.08)}.mastery-level.current{background:#fff1e3;color:#4f2b22}.mastery-level.locked{opacity:.42}.translation-result .hayeren-source{margin-top:10px;display:inline-flex;padding:7px 11px;border-radius:999px;background:#f2e8df;color:#74483d;font-size:11px;font-weight:800}</style>`;
+const bridge=`<script id="hayeren-final-runtime">(function(){window.__HAYEREN_VERSION__='${VERSION}';if('caches'in window)caches.keys().then(ks=>ks.filter(k=>/hayeren/i.test(k)).forEach(k=>caches.delete(k))).catch(()=>{});const nativeFetch=window.fetch.bind(window);let meta={};function turl(u){return /translate\\.googleapis\\.com\\/translate_a\\/single/.test(u)||/api\\.mymemory\\.translated\\.net\\/get/.test(u)}window.fetch=async function(input,init){const url=typeof input==='string'?input:(input&&input.url)||'';if(turl(url)){try{const u=new URL(url,location.href),q=u.searchParams.get('q')||'',gp=/translate\\.googleapis/.test(url);let s='ru',t='hy';if(gp){s=(u.searchParams.get('sl')||'ru').slice(0,2);t=(u.searchParams.get('tl')||'hy').slice(0,2)}else{const p=(u.searchParams.get('langpair')||'ru|hy').split('|');s=(p[0]||'ru').slice(0,2);t=(p[1]||'hy').slice(0,2)}s=s==='hy'?'hy':'ru';t=t==='ru'?'ru':'hy';const r=await nativeFetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q,source:s,target:t})});const j=await r.json();if(!r.ok)throw new Error(j.error||'Перевод недоступен');meta=j;window.__hayerenTranslateMeta=j;if(gp)return new Response(JSON.stringify([[[j.translated,q,null,null,10]],null,s]),{status:200,headers:{'Content-Type':'application/json'}});return new Response(JSON.stringify({responseData:{translatedText:j.translated,match:j.verified?1:.9},matches:[]}),{status:200,headers:{'Content-Type':'application/json'}})}catch(e){return new Response(JSON.stringify({responseData:{translatedText:''},responseStatus:503,error:String(e&&e.message||e)}),{status:503,headers:{'Content-Type':'application/json'}})}}return nativeFetch(input,init)};
+const pick=t=>{t=(t||'').toLowerCase();if(/севан|озер|природ/.test(t))return'/media/sevan';if(/гегард|монастыр|эчмиадзин|звартноц|архитект/.test(t))return'/media/geghard';if(/ереван|эрибун|эбребун|столиц|площад/.test(t))return'/media/yerevan';return'/media/ararat'};
+function visuals(){document.querySelectorAll('.article-card').forEach(c=>{if(c.dataset.v10pic)return;c.dataset.v10pic='1';const i=document.createElement('img');i.className='v10-photo';i.src=pick(c.textContent);i.alt=(c.querySelector('h2')||{}).textContent||'Армения';i.loading='lazy';i.onerror=()=>{i.onerror=null;i.src='/media/ararat'};c.insertBefore(i,c.firstChild)});const d=document.querySelector('.article-screen');if(d&&!d.querySelector('.article-detail-photo')){const l=d.querySelector('.article-lead');if(l){const i=document.createElement('img');i.className='article-detail-photo';i.src=pick(d.textContent);i.alt=(d.querySelector('h1')||{}).textContent||'Армения';i.onerror=()=>{i.onerror=null;i.src='/media/ararat'};l.insertAdjacentElement('afterend',i)}}}
+function st(){try{return JSON.parse(localStorage.getItem('hayeren-state-v4')||'null')}catch{return null}}function complete(){const s=st();return!!(s&&s.lessonProgress&&s.lessonProgress.lesson_48_final&&s.lessonProgress.lesson_48_final.status==='completed')}function level(){const s=st();return Math.max(1,Number(s&&s.masteryLeagueLevel)||Number(localStorage.getItem('hayeren-mastery-level-v7'))||1)}function save(n){const s=st();if(s){s.masteryLeagueLevel=n;s.updatedAt=new Date().toISOString();localStorage.setItem('hayeren-state-v4',JSON.stringify(s));localStorage.setItem('hayeren-pending-sync-v4',JSON.stringify({eventId:(crypto.randomUUID&&crypto.randomUUID())||Date.now()+'-'+Math.random(),state:s}));window.dispatchEvent(new Event('online'))}localStorage.setItem('hayeren-mastery-level-v7',String(n))}const themes=['Слабые места','Живой разговор','Скорость ответа','Армянский на слух','Путешествие','Смешанная практика','Долгая память','Контроль без подсказок'];function launch(n){localStorage.setItem('hayeren-mastery-active',String(n));const m=[...document.querySelectorAll('.v6-bottom-nav button')].find(b=>(b.textContent||'').includes('Ещё'));m&&m.click();setTimeout(()=>{const r=[...document.querySelectorAll('.v6-more-list button')].find(b=>(b.textContent||'').includes('Повторение'));r&&r.click();setTimeout(()=>{const p=document.querySelector('.review-hero .primary');p&&p.click()},100)},100)}function endless(){const c=document.querySelector('.course-screen-v6');if(!c||c.querySelector('.endless-zone'))return;const p=c.querySelector('.lesson-path');if(!p)return;const ok=complete(),lv=level(),s=st(),done=s&&s.lessonProgress?Object.values(s.lessonProgress).filter(v=>v&&v.status==='completed').length:0,z=document.createElement('section');z.className='endless-zone';let cards='';for(let i=0;i<6;i++){const n=lv+i,curr=i===0&&ok;cards+='<button class="mastery-level '+(curr?'current':'locked')+'" data-level="'+n+'" '+(!curr?'disabled':'')+'><span>∞</span><span><b>Уровень '+n+' · '+themes[(n-1)%themes.length]+'</b><small style="display:block;margin-top:3px">'+(curr?'Адаптивная практика из ошибок и слабых слов':'Откроется после предыдущего уровня')+'</small></span><span>'+(curr?'→':'🔒')+'</span></button>'}z.innerHTML='<span style="font-size:9px;font-weight:900;letter-spacing:.18em;color:#ffc28f">БЛОК 13+ · MASTERY LEAGUE</span><h2>Дальше — бесконечно</h2><p style="font-size:11px;color:rgba(255,255,255,.72)">Первые 12 блоков остаются курсом. После них — бесконечная персональная практика.</p>'+(ok?'<div class="endless-path">'+cards+'</div>':'<div style="padding:12px;border-radius:17px;background:rgba(255,255,255,.08)">🔒 Откроется после 48-го урока · сейчас '+done+'/48</div>');p.insertAdjacentElement('afterend',z);const b=z.querySelector('.current');b&&b.addEventListener('click',()=>launch(Number(b.dataset.level)))}function result(){const r=document.querySelector('.results-screen'),a=Number(localStorage.getItem('hayeren-mastery-active'));if(!r||!a||r.dataset.mastery)return;r.dataset.mastery='1';save(a+1);localStorage.removeItem('hayeren-mastery-active')}
+function polish(){visuals();endless();result();const box=document.querySelector('.translation-result');if(box){const m=window.__hayerenTranslateMeta||meta;if(m.ruSound){const s=box.querySelector('.translation-sound');if(s)s.textContent=m.ruSound}if(m.provider&&!box.querySelector('.hayeren-source')){const b=document.createElement('div');b.className='hayeren-source';b.textContent=(m.verified?'✓ Проверено · ':'Автоперевод · ')+m.provider;box.appendChild(b)}}}new MutationObserver(()=>setTimeout(polish,0)).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',polish);setTimeout(polish,300);setTimeout(polish,1200)})();</script>`;
+let html='';let staticChecks={};try{html=loadPayload();staticChecks={payload:html.length>70000,lesson48:html.includes('lesson_48_final'),armenia:html.includes('Армения'),translator:html.includes('TranslatorScreen')||html.includes('Переводчик')};html=html.replace('<head>','<head>'+runtimeShim+polishCss+bridge)}catch(e){console.error('PAYLOAD',e);html='<!doctype html><html lang="ru"><meta charset="utf-8"><body><h1>Hayeren обновляется</h1></body></html>'}
+let selfTest={};async function runSelfTest(){const d=[];const check=(n,g,w)=>d.push({name:n,ok:g===w,value:g});try{let a=await translate('Я люблю тебя','ru','hy');check('love',a.translated,'Ես սիրում եմ քեզ');a=await translate('Привет','ru','hy');check('hello',a.translated,'Բարև');a=await translate('Где находится центр?','ru','hy');check('center',a.translated,'Որտե՞ղ է կենտրոնը');a=await translate('Ես սիրում եմ քեզ','hy','ru');d.push({name:'reverse',ok:/люблю/i.test(a.translated),value:a.translated});selfTest={ok:d.every(x=>x.ok),at:new Date().toISOString(),details:d}}catch(e){selfTest={ok:false,at:new Date().toISOString(),details:[...d,{name:'exception',ok:false,value:e.message}]}}console.log('SELFTEST '+JSON.stringify(selfTest))}
+const manifest=JSON.stringify({name:'Hayeren — Армянский с нуля',short_name:'Hayeren',start_url:'/',display:'standalone',background_color:'#f7f4ee',theme_color:'#f7f4ee',lang:'ru'});const sw=`self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(/hayeren/i.test(k))await caches.delete(k);await self.clients.claim()})()));`;
+const server=http.createServer(async(req,res)=>{try{const u=new URL(req.url,'http://localhost');res.setHeader('X-Hayeren-Version',VERSION);res.setHeader('Access-Control-Allow-Origin','*');if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end()}if(u.pathname==='/health'){const ok=selfTest.ok&&Object.values(staticChecks).every(Boolean)&&html.length>70000;res.writeHead(ok?200:503,{'Content-Type':'application/json','Cache-Control':'no-store'});return res.end(JSON.stringify({ok,version:VERSION,htmlBytes:Buffer.byteLength(html),staticChecks,translatorSelfTest:selfTest}))}if(u.pathname.startsWith('/media/'))return serveMedia(u.pathname.split('/').pop(),res);if(u.pathname==='/manifest.webmanifest'){res.writeHead(200,{'Content-Type':'application/manifest+json','Cache-Control':'no-store'});return res.end(manifest)}if(u.pathname==='/sw.js'){res.writeHead(200,{'Content-Type':'application/javascript; charset=utf-8','Cache-Control':'no-store'});return res.end(sw)}if(u.pathname==='/api/translate'){try{let j={};if(req.method==='GET')j={text:u.searchParams.get('text')||u.searchParams.get('q')||'',source:u.searchParams.get('source')||'ru',target:u.searchParams.get('target')||'hy'};else if(req.method==='POST')j=await new Promise((resolve,reject)=>{let b='';req.on('data',c=>{b+=c;if(b.length>12000)reject(new Error('too large'))});req.on('end',()=>{try{resolve(JSON.parse(b||'{}'))}catch(e){reject(e)}})});else{res.writeHead(405,{'Content-Type':'application/json'});return res.end(JSON.stringify({error:'method not allowed'}))}const text=String(j.text||'').trim(),source=j.source==='hy'?'hy':'ru',target=j.target==='ru'?'ru':'hy';if(!text||text.length>1200)throw new Error('Некорректный текст');if(source===target)throw new Error('Языки должны отличаться');const out=await translate(text,source,target);res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});return res.end(JSON.stringify(out))}catch(e){res.writeHead(422,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});return res.end(JSON.stringify({error:e.message||'Не удалось получить надёжный перевод'}))}}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store,no-cache,must-revalidate,max-age=0','Pragma':'no-cache','Expires':'0','X-Content-Type-Options':'nosniff'});res.end(html)}catch(e){console.error(e);res.writeHead(500,{'Content-Type':'text/plain; charset=utf-8'});res.end('Hayeren error')}});
+(async()=>{await runSelfTest();server.listen(PORT,'0.0.0.0',()=>console.log('Hayeren '+VERSION+' single-service production ready'));setInterval(()=>runSelfTest().catch(()=>{}),15*60*1000).unref()})();
