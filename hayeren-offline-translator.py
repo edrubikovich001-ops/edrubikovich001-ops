@@ -4,11 +4,9 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
-import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -17,20 +15,32 @@ MODELS_ROOT = BASE / "hayeren_offline_models"
 SECRET = os.environ.get("HAYEREN_OFFLINE_SECRET", "")
 PORT = int(os.environ.get("PORT", "8080"))
 
+# Preconverted INT8 CTranslate2 checkpoints of the Apache-2.0 Helsinki-NLP
+# OPUS-MT models. ~51 MB per direction, so they fit comfortably on the free
+# service and avoid a heavy PyTorch conversion during Render builds.
 MODEL_SPECS = {
-    "ru-hy": {
-        "url": "https://object.pouta.csc.fi/Tatoeba-MT-models/rus-hye/opus-2020-06-16.zip",
-        "target_prefix": ">>hye<< ",
-    },
-    "hy-ru": {
-        "url": "https://object.pouta.csc.fi/Tatoeba-MT-models/hye-rus/opus-2020-06-16.zip",
-        "target_prefix": "",
-    },
+    "ru-hy": {"repo": "manancode/opus-mt-ru-hy-ctranslate2-android"},
+    "hy-ru": {"repo": "manancode/opus-mt-hy-ru-ctranslate2-android"},
 }
+MODEL_FILES = (
+    "model.bin",
+    "config.json",
+    "shared_vocabulary.json",
+    "source.spm",
+    "target.spm",
+)
+
+
+def download_file(repo, name, target):
+    url = f"https://huggingface.co/{repo}/resolve/main/{name}?download=true"
+    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.1"})
+    with urllib.request.urlopen(req, timeout=180) as response, open(target, "wb") as f:
+        shutil.copyfileobj(response, f)
+    if target.stat().st_size < 50:
+        raise RuntimeError(f"downloaded file too small: {repo}/{name}")
 
 
 def build_models():
-    import ctranslate2
     MODELS_ROOT.mkdir(parents=True, exist_ok=True)
     for direction, spec in MODEL_SPECS.items():
         out_dir = MODELS_ROOT / direction
@@ -39,32 +49,20 @@ def build_models():
             print(f"MODEL_BUILD_SKIP {direction}", flush=True)
             continue
         print(f"MODEL_BUILD_START {direction}", flush=True)
-        with tempfile.TemporaryDirectory(prefix=f"hayeren-{direction}-") as tmp:
-            tmp_dir = Path(tmp)
-            zip_path = tmp_dir / "model.zip"
-            raw_dir = tmp_dir / "raw"
-            raw_dir.mkdir()
-            req = urllib.request.Request(spec["url"], headers={"User-Agent": "HayerenOffline/1.0"})
-            with urllib.request.urlopen(req, timeout=120) as response, open(zip_path, "wb") as f:
-                shutil.copyfileobj(response, f)
-            print(f"MODEL_DOWNLOADED {direction} bytes={zip_path.stat().st_size}", flush=True)
-            with zipfile.ZipFile(zip_path) as zf:
-                zf.extractall(raw_dir)
-            decoder = next(raw_dir.rglob("decoder.yml"), None)
-            if decoder is None:
-                raise RuntimeError(f"decoder.yml missing for {direction}")
-            model_dir = decoder.parent
-            if out_dir.exists():
-                shutil.rmtree(out_dir)
-            converter = ctranslate2.converters.OpusMTConverter(str(model_dir))
-            converter.convert(str(out_dir), quantization="int8_float32", force=True)
-            for name in ("source.spm", "target.spm"):
-                src = model_dir / name
-                if not src.exists():
-                    raise RuntimeError(f"{name} missing for {direction}")
-                shutil.copy2(src, out_dir / name)
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        out_dir.mkdir(parents=True)
+        try:
+            for name in MODEL_FILES:
+                path = out_dir / name
+                download_file(spec["repo"], name, path)
+                print(f"MODEL_FILE {direction} {name} bytes={path.stat().st_size}", flush=True)
             marker.write_text("ok\n", encoding="utf-8")
-            print(f"MODEL_BUILD_DONE {direction} bytes={sum(p.stat().st_size for p in out_dir.rglob('*') if p.is_file())}", flush=True)
+            total = sum(p.stat().st_size for p in out_dir.rglob("*") if p.is_file())
+            print(f"MODEL_BUILD_DONE {direction} bytes={total}", flush=True)
+        except Exception:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise
 
 
 class Engine:
@@ -115,31 +113,19 @@ class Engine:
             raise ValueError("unsupported language pair")
         with self.lock:
             self._load(direction)
-            spec = MODEL_SPECS[direction]
-            candidates = []
-            if spec["target_prefix"]:
-                candidates.append(spec["target_prefix"] + text)
-            candidates.append(text)
-            if direction == "hy-ru":
-                candidates.append(">>rus<< " + text)
-            last = ""
-            for source_text in candidates:
-                source_tokens = self.source_sp.encode(source_text, out_type=str)
-                result = self.translator.translate_batch(
-                    [source_tokens],
-                    beam_size=4,
-                    max_decoding_length=256,
-                    repetition_penalty=1.05,
-                )[0]
-                tokens = result.hypotheses[0]
-                out = self.target_sp.decode(tokens).strip()
-                out = out.replace(">>hye<<", "").replace(">>hye_Latn<<", "").replace(">>rus<<", "").strip()
-                last = out
-                if self._valid(out, target):
-                    return out
-            if last:
-                return last
-            raise RuntimeError("empty translation")
+            source_tokens = self.source_sp.encode(text, out_type=str)
+            result = self.translator.translate_batch(
+                [source_tokens],
+                beam_size=4,
+                max_decoding_length=256,
+                repetition_penalty=1.05,
+            )[0]
+            tokens = result.hypotheses[0]
+            out = self.target_sp.decode(tokens).strip()
+            out = out.replace(">>hye<<", "").replace(">>hye_Latn<<", "").replace(">>rus<<", "").strip()
+            if not self._valid(out, target):
+                raise RuntimeError(f"invalid {target} output")
+            return out
 
 
 ENGINE = Engine()
@@ -149,6 +135,7 @@ def selftest():
     tests = [
         ("добрый день", "ru", "hy"),
         ("Բարի օր", "hy", "ru"),
+        ("где находится железнодорожный вокзал", "ru", "hy"),
     ]
     results = []
     ok = True
@@ -156,7 +143,7 @@ def selftest():
         try:
             out = ENGINE.translate(text, source, target)
             valid = ENGINE._valid(out, target)
-            results.append({"source": source, "target": target, "ok": valid, "sample": out[:100]})
+            results.append({"source": source, "target": target, "ok": valid, "sample": out[:120]})
             ok = ok and valid
         except Exception as exc:
             results.append({"source": source, "target": target, "ok": False, "error": str(exc)})
@@ -166,7 +153,7 @@ def selftest():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HayerenOffline/1.0"
+    server_version = "HayerenOffline/1.1"
 
     def log_message(self, fmt, *args):
         print("HTTP " + (fmt % args), flush=True)
