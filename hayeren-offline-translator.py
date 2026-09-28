@@ -15,25 +15,16 @@ MODELS_ROOT = BASE / "hayeren_offline_models"
 SECRET = os.environ.get("HAYEREN_OFFLINE_SECRET", "")
 PORT = int(os.environ.get("PORT", "8080"))
 
-# Preconverted INT8 CTranslate2 checkpoints of the Apache-2.0 Helsinki-NLP
-# OPUS-MT models. ~51 MB per direction, so they fit comfortably on the free
-# service and avoid a heavy PyTorch conversion during Render builds.
 MODEL_SPECS = {
     "ru-hy": {"repo": "manancode/opus-mt-ru-hy-ctranslate2-android"},
     "hy-ru": {"repo": "manancode/opus-mt-hy-ru-ctranslate2-android"},
 }
-MODEL_FILES = (
-    "model.bin",
-    "config.json",
-    "shared_vocabulary.json",
-    "source.spm",
-    "target.spm",
-)
+MODEL_FILES = ("model.bin", "config.json", "shared_vocabulary.json", "source.spm", "target.spm")
 
 
 def download_file(repo, name, target):
     url = f"https://huggingface.co/{repo}/resolve/main/{name}?download=true"
-    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.2"})
     with urllib.request.urlopen(req, timeout=180) as response, open(target, "wb") as f:
         shutil.copyfileobj(response, f)
     if target.stat().st_size < 50:
@@ -88,11 +79,7 @@ class Engine:
             raise RuntimeError(f"model {direction} is not ready")
         print(f"MODEL_LOAD_START {direction}", flush=True)
         self.translator = ctranslate2.Translator(
-            str(model_dir),
-            device="cpu",
-            compute_type="int8_float32",
-            inter_threads=1,
-            intra_threads=1,
+            str(model_dir), device="cpu", compute_type="int8_float32", inter_threads=1, intra_threads=1
         )
         self.source_sp = spm.SentencePieceProcessor(model_file=str(model_dir / "source.spm"))
         self.target_sp = spm.SentencePieceProcessor(model_file=str(model_dir / "target.spm"))
@@ -100,12 +87,29 @@ class Engine:
         print(f"MODEL_LOAD_DONE {direction}", flush=True)
 
     @staticmethod
-    def _valid(text, target):
+    def _valid_script(text, target):
         if not text:
             return False
         if target == "hy":
             return any("Ա" <= ch <= "ֆ" or ch == "և" for ch in text)
         return any(("А" <= ch <= "я") or ch in "Ёё" for ch in text)
+
+    @staticmethod
+    def _not_pathological(text):
+        words = [w.lower().strip(".,!?;:—-()[]{}\"'") for w in text.split()]
+        words = [w for w in words if w]
+        if not words:
+            return False
+        if len(words) >= 8:
+            most = max(words.count(w) for w in set(words))
+            if most / len(words) > 0.42:
+                return False
+        for n in (2, 3):
+            if len(words) >= n * 4:
+                grams = [tuple(words[i:i+n]) for i in range(len(words) - n + 1)]
+                if grams and max(grams.count(g) for g in set(grams)) >= 4:
+                    return False
+        return True
 
     def translate(self, text, source, target):
         direction = f"{source}-{target}"
@@ -113,18 +117,28 @@ class Engine:
             raise ValueError("unsupported language pair")
         with self.lock:
             self._load(direction)
+            # These checkpoints were converted through Transformers. Marian's tokenizer
+            # supplies </s> as a special source token; raw SentencePiece does not, so we
+            # must append it explicitly or decoding may never terminate correctly.
             source_tokens = self.source_sp.encode(text, out_type=str)
+            if not source_tokens or source_tokens[-1] != "</s>":
+                source_tokens.append("</s>")
+            max_output = min(128, max(24, len(source_tokens) * 5))
             result = self.translator.translate_batch(
                 [source_tokens],
-                beam_size=4,
-                max_decoding_length=256,
-                repetition_penalty=1.05,
+                beam_size=2,
+                max_decoding_length=max_output,
+                repetition_penalty=1.08,
+                no_repeat_ngram_size=3,
+                end_token="</s>",
             )[0]
-            tokens = result.hypotheses[0]
+            tokens = [t for t in result.hypotheses[0] if t not in ("<s>", "</s>")]
             out = self.target_sp.decode(tokens).strip()
             out = out.replace(">>hye<<", "").replace(">>hye_Latn<<", "").replace(">>rus<<", "").strip()
-            if not self._valid(out, target):
+            if not self._valid_script(out, target):
                 raise RuntimeError(f"invalid {target} output")
+            if not self._not_pathological(out):
+                raise RuntimeError("pathological repetition detected")
             return out
 
 
@@ -133,17 +147,21 @@ ENGINE = Engine()
 
 def selftest():
     tests = [
-        ("добрый день", "ru", "hy"),
-        ("Բարի օր", "hy", "ru"),
-        ("где находится железнодорожный вокзал", "ru", "hy"),
+        ("добрый день", "ru", "hy", ("բարի", "օր")),
+        ("Բարի օր", "hy", "ru", ("добр", "день")),
+        ("где находится железнодорожный вокзал", "ru", "hy", ("որտեղ", "կայարան")),
     ]
     results = []
     ok = True
-    for text, source, target in tests:
+    for text, source, target, semantic_hints in tests:
         try:
             out = ENGINE.translate(text, source, target)
-            valid = ENGINE._valid(out, target)
-            results.append({"source": source, "target": target, "ok": valid, "sample": out[:120]})
+            low = out.lower()
+            script_ok = ENGINE._valid_script(out, target)
+            quality_ok = ENGINE._not_pathological(out)
+            semantic_ok = any(h in low for h in semantic_hints)
+            valid = script_ok and quality_ok and semantic_ok
+            results.append({"source": source, "target": target, "ok": valid, "sample": out[:160]})
             ok = ok and valid
         except Exception as exc:
             results.append({"source": source, "target": target, "ok": False, "error": str(exc)})
@@ -153,7 +171,7 @@ def selftest():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HayerenOffline/1.1"
+    server_version = "HayerenOffline/1.2"
 
     def log_message(self, fmt, *args):
         print("HTTP " + (fmt % args), flush=True)
@@ -166,6 +184,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
 
     def do_GET(self):
         if self.path.split("?", 1)[0] == "/health":
