@@ -1,8 +1,59 @@
 // Preloaded before hayeren-v9-proxy.js.
-// Hardens Armenia media, makes article images topic-specific and adds a clear
-// pronunciation label to the translator without changing course/progress data.
+// Hardens Armenia media and the translator without changing course/progress data.
 const http = require('http');
 const nativeCreateServer = http.createServer.bind(http);
+const nativeFetch = globalThis.fetch.bind(globalThis);
+
+// Google public translate endpoint can rate-limit Render IPs. Keep it as primary,
+// but transparently return a Google-compatible payload from MyMemory on 429/5xx.
+globalThis.fetch = async function hayerenResilientFetch(input, init) {
+  const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : (input && input.url) || '';
+  if (!/translate\.googleapis\.com\/translate_a\/single/.test(raw)) return nativeFetch(input, init);
+
+  let primary;
+  try {
+    primary = await nativeFetch(input, init);
+    if (primary.ok) return primary;
+    if (![403, 429, 500, 502, 503, 504].includes(primary.status)) return primary;
+  } catch (error) {
+    console.warn('TRANSLATOR_PRIMARY_ERROR ' + (error && error.message));
+  }
+
+  try {
+    const sourceUrl = new URL(raw);
+    const q = sourceUrl.searchParams.get('q') || '';
+    const sl = (sourceUrl.searchParams.get('sl') || 'ru').slice(0, 2);
+    const tl = (sourceUrl.searchParams.get('tl') || 'hy').slice(0, 2);
+    const fallbackUrl = new URL('https://api.mymemory.translated.net/get');
+    fallbackUrl.searchParams.set('q', q);
+    fallbackUrl.searchParams.set('langpair', `${sl}|${tl}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await nativeFetch(fallbackUrl, {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json', 'User-Agent': 'Hayeren/10 translator fallback' }
+      });
+      if (!response.ok) throw new Error(`MyMemory ${response.status}`);
+      const data = await response.json();
+      const translated = String(data?.responseData?.translatedText || '').trim();
+      if (!translated) throw new Error('MyMemory empty');
+      if (tl === 'hy' && !/[Ա-Ֆա-ֆև]/.test(translated)) throw new Error('MyMemory bad Armenian output');
+      if (tl === 'ru' && !/[А-Яа-яЁё]/.test(translated)) throw new Error('MyMemory bad Russian output');
+      console.warn(`TRANSLATOR_FALLBACK_OK primary=${primary ? primary.status : 'network'} pair=${sl}|${tl}`);
+      return new Response(JSON.stringify([[[translated, q, null, null, 10]], null, sl]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Hayeren-Translator': 'fallback' }
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (error) {
+    console.error('TRANSLATOR_FALLBACK_ERROR ' + (error && error.message));
+    if (primary) return primary;
+    throw error;
+  }
+};
 
 const FILES = {
   ararat: 'View of Mount Ararat from Yerevan.jpg',
@@ -97,7 +148,7 @@ const clientPolish = `<style id="hayeren-v10-polish">
  function apply(){
    document.querySelectorAll('.article-card').forEach(card=>{const img=card.querySelector('.v10-photo,.v7-photo');fixImage(img,card.textContent);if(img&&!card.querySelector('.hayeren-photo-credit')){const n=document.createElement('div');n.className='hayeren-photo-credit';n.textContent='Фото: Wikimedia Commons';img.insertAdjacentElement('afterend',n)}});
    const detail=document.querySelector('.article-screen');if(detail)fixImage(detail.querySelector('.article-detail-photo'),detail.textContent);
-   const box=document.querySelector('.translation-result');if(box){const snd=box.querySelector('.translation-sound');if(snd&&String(snd.textContent||'').trim()&&!box.querySelector('.hayeren-sound-label')){const l=document.createElement('div');l.className='hayeren-sound-label';l.textContent='Произношение русскими буквами';snd.parentNode&&snd.parentNode.insertBefore(l,snd)}}
+   const box=document.querySelector('.translation-result');if(box){const snd=box.querySelector('.translation-sound');if(snd&&String(snd.textContent||'').trim()&&!box.querySelector('.hayeren-sound-label')){const l=document.createElement('div');l.className='hayeren-sound-label';l.textContent='Произношение русскими буквами';snd.parentNode&&snd.parentNode.insertBefore(l,snd)}const source=box.querySelector('.hayeren-source');if(source&&/Google Translate/.test(source.textContent||''))source.textContent='Автоперевод · онлайн-переводчик'}
  }
  new MutationObserver(()=>setTimeout(apply,0)).observe(document.documentElement,{subtree:true,childList:true});document.addEventListener('DOMContentLoaded',apply);setTimeout(apply,250);setTimeout(apply,1000);
 })();</script>`;
@@ -129,8 +180,7 @@ function wrapListener(listener) {
       if (req.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/health') && !url.pathname.startsWith('/sw.js') && !url.pathname.startsWith('/manifest')) {
         const nativeEnd = res.end.bind(res);
         res.end = function patchedEnd(chunk, encoding, callback) {
-          const next = injectHtml(chunk, res);
-          return nativeEnd(next, encoding, callback);
+          return nativeEnd(injectHtml(chunk, res), encoding, callback);
         };
       }
     } catch (error) {
@@ -161,7 +211,7 @@ async function probeMedia() {
 
 async function probeTranslatorProvider() {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const url = new URL('https://translate.googleapis.com/translate_a/single');
     url.searchParams.set('client', 'gtx');
@@ -173,9 +223,9 @@ async function probeTranslatorProvider() {
     const data = response.ok ? await response.json() : null;
     const translated = Array.isArray(data?.[0]) ? data[0].map((x) => x?.[0] || '').join('').trim() : '';
     const ok = response.ok && /[Ա-Ֆա-ֆև]/.test(translated);
-    console.log('TRANSLATOR_PROVIDER_SELFTEST ' + JSON.stringify({ ok, status: response.status, sample: translated.slice(0, 80) }));
+    console.log('TRANSLATOR_CHAIN_SELFTEST ' + JSON.stringify({ ok, status: response.status, sample: translated.slice(0, 80) }));
   } catch (error) {
-    console.error('TRANSLATOR_PROVIDER_SELFTEST ' + JSON.stringify({ ok: false, error: error && error.message }));
+    console.error('TRANSLATOR_CHAIN_SELFTEST ' + JSON.stringify({ ok: false, error: error && error.message }));
   } finally {
     clearTimeout(timer);
   }
