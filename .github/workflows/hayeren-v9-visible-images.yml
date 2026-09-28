@@ -1,0 +1,47 @@
+name: Hayeren v9 visible Armenia images
+on:
+  push:
+    branches: [hayeren-production]
+    paths: ['.github/workflows/hayeren-v9-visible-images.yml']
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hayeren-production
+      - name: Make Armenia images reliable
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('hayeren-v9-proxy.js')
+          s=p.read_text()
+          start=s.index('const media={')
+          end=s.index('};',start)+2
+          media="""const media={
+            ararat:'https://excursionmania.com/cdn-cgi/image/quality%3D75%2Cformat%3Dwebp%2Cw%3Dauto%2Ch%3Dauto%2Cfit%3Dscale-down%2Ctrim%3Dborder/https%3A/excursionmania.com/uploads/blog/gallery/5721/1767703349.png',
+            yerevan:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg/1280px-Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg',
+            geghard:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg',
+            sevan:'https://extraguide.ru/images/t/2e7bbd9ea5a337f578992ff1fa75c2c0af8f39a2.jpg',
+            erebuni:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg/1280px-Yerevan%2C_Republic_Square_of_Yerevan%2C_Erevan%2C_Armenia.jpg',
+            alphabet:'https://excursionmania.com/cdn-cgi/image/quality%3D75%2Cformat%3Dwebp%2Cw%3Dauto%2Ch%3Dauto%2Cfit%3Dscale-down%2Ctrim%3Dborder/https%3A/excursionmania.com/uploads/blog/gallery/5721/1767703349.png',
+            duduk:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg',
+            lavash:'https://extraguide.ru/images/t/2e7bbd9ea5a337f578992ff1fa75c2c0af8f39a2.jpg',
+            khachkar:'https://www.lavozarmenia.com/asset/thumbnail%2C1280%2C720%2Ccenter%2Ccenter/media/lavozarmenia/images/2023/06/20/2023062017405473474.jpg'
+          };"""
+          s=s[:start]+media+s[end:]
+          s=s.replace("const VERSION='9.0'","const VERSION='9.1'")
+          s=s.replace("Hayeren/9.0 educational app","Hayeren/9.1 educational app")
+          s=s.replace("window.__HAYEREN_MEDIA_VERSION__='9.0'","window.__HAYEREN_MEDIA_VERSION__='9.1'")
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name 'Hayeren Production Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add hayeren-v9-proxy.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Hayeren v9.1: make Armenia images visible'
+          git push origin hayeren-production
