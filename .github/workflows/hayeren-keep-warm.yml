@@ -1,0 +1,15 @@
+name: Hayeren keep warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake Hayeren
+        run: |
+          curl -sS --max-time 25 https://hayeren-v9-live.onrender.com/health >/dev/null || true
+          curl -sS --max-time 25 https://hayeren-v9-live.onrender.com/ >/dev/null || true
