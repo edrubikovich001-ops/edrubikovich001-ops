@@ -2,7 +2,7 @@ name: Hayeren keep warm
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,5 +11,6 @@ jobs:
     steps:
       - name: Wake Hayeren
         run: |
-          curl -sS --max-time 25 https://hayeren-v9-live.onrender.com/health >/dev/null || true
-          curl -sS --max-time 25 https://hayeren-v9-live.onrender.com/ >/dev/null || true
+          curl -sS --max-time 25 'https://hayeren-v9-live.onrender.com/?keepwarm=1' >/dev/null || true
+          sleep 2
+          curl -sS --max-time 25 'https://hayeren-v9-live.onrender.com/?keepwarm=2' >/dev/null || true
