@@ -1,0 +1,6 @@
+{
+  "name": "hayeren-production",
+  "private": true,
+  "version": "15.0.0",
+  "description": "Hayeren Telegram Mini App production shell"
+}
