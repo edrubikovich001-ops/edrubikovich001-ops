@@ -218,7 +218,15 @@ function patch(html){
 }
 
 (async()=>{
+
  const html=patch(await fetchRealApp());
+ const probes=['До свидания','восемь','Метро','Соедини пары','Небольшая проверка','Что написано по-армянски?','lesson_1','Приветствия'];
+ for(const q of probes){
+   const i=html.indexOf(q);
+   console.log('DEBUG_PROBE',q,'idx='+i);
+   if(i>=0) console.log('DEBUG_SNIP',q,html.slice(Math.max(0,i-1800),i+4200).replace(/\n/g,' '));
+ }
+
  if(!html.includes('lesson_48_final')||!html.includes('MASTERY LEAGUE')||!html.includes('static-cdn-18')||!html.includes('hayeren-no-answer-leak-css')||!html.includes('beginnerMeaningQuiz')||!html.includes('hayeren-beginner-v18')||!html.includes('hayeren-beginner-safe-v20'))throw new Error('Static validation failed');
  fs.rmSync(OUT,{recursive:true,force:true});fs.mkdirSync(OUT,{recursive:true});
  fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
