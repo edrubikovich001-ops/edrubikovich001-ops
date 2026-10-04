@@ -25,7 +25,7 @@ async function fetchRealApp(){
  let last='';
  for(let i=0;i<24;i++){
    try{
-     const r=await fetch(SOURCE+'?static-build='+Date.now(),{redirect:'follow',headers:{'user-agent':'Hayeren-Static-Builder/18'}});
+     const r=await fetch(SOURCE+'?static-build='+Date.now(),{redirect:'follow',headers:{'user-agent':'Hayeren-Static-Builder/19'}});
      const text=await r.text(); last=text;
      const type=r.headers.get('content-type')||'';
      const real=r.status===200&&type.includes('text/html')&&text.includes('lesson_48_final')&&text.includes('MASTERY LEAGUE')&&!/APPLICATION LOADING|START BUILDING ON RENDER TODAY|INCOMING HTTP REQUEST DETECTED/i.test(text);
@@ -45,7 +45,7 @@ function patch(html){
 
  const boot=`<style id="hayeren-no-answer-leak-css">.hayeren-hide-answer-hint{display:none!important}</style>
  <script id="hayeren-static-edge-16">(()=>{
-   window.__HAYEREN_ENTRY__='static-cdn-18';
+   window.__HAYEREN_ENTRY__='static-cdn-19';
    try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{})}}catch{}
    const edge='${EDGE_TRANSLATE}',nativeFetch=window.fetch.bind(window);
    const sameTranslate=u=>{try{const x=new URL(u,location.href);return x.pathname==='/api/translate'||x.pathname.endsWith('/api/translate')}catch{return false}};
@@ -210,16 +210,117 @@ function patch(html){
  window.__HAYEREN_BEGINNER_FIX__='18.0';
  })();<\/script>`;
 
- if(html.includes('<head>')) html=html.replace('<head>','<head>'+boot+beginnerV18); else html=boot+html;
- html=html.replace('</head>','<meta name="hayeren-entry" content="static-cdn-18"></head>');
+
+ const beginnerV19=\`<script id="hayeren-beginner-v19">(()=>{
+ const ARM=/[Ա-Ֆա-ֆև]/, CYR=/[А-Яа-яЁё]/;
+ const clean=s=>String(s||'').replace(/\\s+/g,' ').trim();
+ const norm=s=>clean(s).toLowerCase().replace(/[?!.,;:()«»“”"'։՞՜՛]/g,'').replace(/ё/g,'е');
+ const SOUND={
+  'барев':'Привет','барев дзез':'Здравствуйте','бари луйс':'Доброе утро','бари ереко':'Добрый вечер',
+  'бари гишер':'Спокойной ночи','инчпес ек':'Как вы?','инчпес эк':'Как вы?','инчпес ес':'Как ты?',
+  'вонц ес':'Как дела?','вoнц ес':'Как дела?','лав ем':'У меня всё хорошо','лав эм':'У меня всё хорошо',
+  'лав':'Хорошо','шат лав':'Очень хорошо','ват че':'Неплохо','шноракалутюн':'Спасибо','шноракалуцюн':'Спасибо',
+  'шат шноракалутюн':'Большое спасибо','хндрем':'Пожалуйста','нерецек':'Извините','кнерек':'Извините',
+  'цтесутюн':'До свидания','айо':'Да','воч':'Нет','инч э дзер ануны':'Как вас зовут?',
+  'инч э ко ануны':'Как тебя зовут?','им анунн э':'Меня зовут…','им ануны':'Меня зовут…',
+  'вортехиц ек':'Откуда вы?','вортехиц ес':'Откуда ты?','урах ем цанотанал':'Приятно познакомиться',
+  'ес эл':'Я тоже','бари галуст':'Добро пожаловать'
+ };
+ const HY={
+  'Բարև':'Привет','Բարև ձեզ':'Здравствуйте','Բարի լույս':'Доброе утро','Բարի երեկո':'Добрый вечер','Բարի գիշեր':'Спокойной ночи',
+  'Ինչպե՞ս եք':'Как вы?','Ինչպե՞ս ես':'Как ты?','Ո՞նց ես':'Как дела?','Լավ եմ':'У меня всё хорошо','Լավ':'Хорошо',
+  'Շատ լավ':'Очень хорошо','Վատ չէ':'Неплохо','Շնորհակալություն':'Спасибо','Շատ շնորհակալություն':'Большое спасибо',
+  'Խնդրեմ':'Пожалуйста','Ներեցեք':'Извините','Կներեք':'Извините','Ցտեսություն':'До свидания','Այո':'Да','Ոչ':'Нет',
+  'Ի՞նչ է ձեր անունը':'Как вас зовут?','Ի՞նչ է քո անունը':'Как тебя зовут?','Քո անունն ի՞նչ է':'Как тебя зовут?',
+  'Իմ անունն է':'Меня зовут…','Որտեղի՞ց եք':'Откуда вы?','Որտեղի՞ց ես':'Откуда ты?','Ուրախ եմ ծանոթանալու':'Приятно познакомиться',
+  'Ես էլ':'Я тоже','Բարի գալուստ':'Добро пожаловать'
+ };
+ const BANK=['Привет','Здравствуйте','Доброе утро','Добрый вечер','Как вы?','Как дела?','Спасибо','До свидания','Хорошо','Пожалуйста','Извините'];
+ const meaningSound=s=>SOUND[norm(s)]||'';
+ const meaningHy=s=>HY[clean(s)]||Object.entries(HY).find(([k])=>norm(k)===norm(s))?.[1]||'';
+ const getLesson=()=>{const m=clean(document.body&&document.body.innerText).match(/Урок\\s+(\\d+)/i);return m?Number(m[1]):99};
+ function findQuestionText(){
+   const w=document.createTreeWalker(document.body||document.documentElement,NodeFilter.SHOW_TEXT);
+   let n; while(n=w.nextNode()){
+     const t=clean(n.nodeValue);
+     if(t==='Что написано по-армянски?'||t==='Какое армянское выражение звучит так?'||t==='Выбери армянское написание')return n.parentElement;
+   }
+   return null;
+ }
+ function cardFor(head){
+   let el=head;
+   for(let i=0;i<12&&el;i++,el=el.parentElement){
+     const bs=[...el.querySelectorAll('button,[role="button"]')].filter(b=>ARM.test(clean(b.innerText||b.textContent)));
+     if(bs.length>=2)return {card:el,buttons:bs.slice(0,4)};
+   }
+   return null;
+ }
+ function chooseDistractors(correct,prompt,count){
+   let h=0;for(const ch of prompt)h=(h*31+ch.charCodeAt(0))>>>0;
+   const arr=BANK.filter(x=>x!==correct),out=[];
+   for(let i=0;i<arr.length&&out.length<count;i++){const x=arr[(h+i*3)%arr.length];if(!out.includes(x))out.push(x)}
+   return out;
+ }
+ function fix(){
+   if(getLesson()>4)return;
+   const head=findQuestionText(); if(!head)return;
+   const found=cardFor(head); if(!found)return;
+   const {card,buttons}=found;
+   const lines=String(card.innerText||card.textContent||'').split(/\\n+/).map(clean).filter(Boolean);
+   let prompt='';
+   const labelIndex=lines.findIndex(x=>/ЗВУЧИТ РУССКИМИ БУКВАМИ/i.test(x));
+   if(labelIndex>=0&&lines[labelIndex+1])prompt=lines[labelIndex+1];
+   if(!prompt){
+     for(const line of lines){if(meaningSound(line)){prompt=line;break}}
+   }
+   if(!prompt)return;
+   const correctMeaning=meaningSound(prompt); if(!correctMeaning)return;
+   let correctIndex=-1;
+   const parsed=buttons.map((b,i)=>{
+     const ls=String(b.innerText||b.textContent||'').split(/\\n+/).map(clean).filter(Boolean);
+     const hy=ls.find(x=>ARM.test(x))||'';
+     const tr=ls.find(x=>CYR.test(x)&&!ARM.test(x))||'';
+     if(tr&&norm(tr)===norm(prompt))correctIndex=i;
+     if(correctIndex<0&&meaningHy(hy)===correctMeaning)correctIndex=i;
+     return {b,hy,tr};
+   });
+   if(correctIndex<0)return;
+   const distractors=chooseDistractors(correctMeaning,prompt,buttons.length-1);
+   let di=0;
+   parsed.forEach((x,i)=>{
+     const label=i===correctIndex?correctMeaning:distractors[di++];
+     if(clean(x.b.textContent)!==label){
+       x.b.textContent=label;
+       x.b.setAttribute('aria-label',label);
+       x.b.dataset.hayerenV19='1';
+     }
+   });
+   if(clean(head.textContent)!=='Что значит «'+prompt+'»?')head.textContent='Что значит «'+prompt+'»?';
+   const all=[...card.querySelectorAll('*')];
+   for(const el of all){
+     if(el.children.length===0&&/ЗВУЧИТ РУССКИМИ БУКВАМИ/i.test(clean(el.textContent)))el.textContent='ФРАЗА:';
+   }
+   card.dataset.hayerenBeginnerV19='1';
+ }
+ let scheduled=false;
+ const run=()=>{scheduled=false;try{fix()}catch(e){}};
+ const schedule=()=>{if(scheduled)return;scheduled=true;setTimeout(()=>requestAnimationFrame(run),20)};
+ new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+ document.addEventListener('DOMContentLoaded',schedule);
+ setInterval(fix,250);setTimeout(fix,30);setTimeout(fix,300);setTimeout(fix,1000);
+ window.__HAYEREN_BEGINNER_FIX__='19.0';
+ })();<\\/script>\`;
+
+ if(html.includes('<head>')) html=html.replace('<head>','<head>'+boot+beginnerV18+beginnerV19); else html=boot+html;
+ html=html.replace('</head>','<meta name="hayeren-entry" content="static-cdn-19"></head>');
  return html;
 }
 
 (async()=>{
  const html=patch(await fetchRealApp());
- if(!html.includes('lesson_48_final')||!html.includes('MASTERY LEAGUE')||!html.includes('static-cdn-18')||!html.includes('hayeren-no-answer-leak-css')||!html.includes('beginnerMeaningQuiz')||!html.includes('hayeren-beginner-v18'))throw new Error('Static validation failed');
+ if(!html.includes('lesson_48_final')||!html.includes('MASTERY LEAGUE')||!html.includes('static-cdn-19')||!html.includes('hayeren-no-answer-leak-css')||!html.includes('beginnerMeaningQuiz')||!html.includes('hayeren-beginner-v18')||!html.includes('hayeren-beginner-v19'))throw new Error('Static validation failed');
  fs.rmSync(OUT,{recursive:true,force:true});fs.mkdirSync(OUT,{recursive:true});
  fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
- fs.writeFileSync(path.join(OUT,'health.json'),JSON.stringify({ok:true,entry:'static-cdn-18',lesson48:true,mastery:true,noAnswerLeak:true,beginnerMeaningQuiz:true,beginnerV18:true,generatedAt:new Date().toISOString()}));
+ fs.writeFileSync(path.join(OUT,'health.json'),JSON.stringify({ok:true,entry:'static-cdn-19',lesson48:true,mastery:true,noAnswerLeak:true,beginnerMeaningQuiz:true,beginnerV18:true,beginnerV19:true,generatedAt:new Date().toISOString()}));
  console.log('HAYEREN_STATIC_READY bytes='+Buffer.byteLength(html));
 })().catch(e=>{console.error(e);process.exit(1)});
