@@ -1,5 +1,6 @@
 const fs=require('fs');
 const path=require('path');
+const zlib=require('zlib');
 
 const SOURCE='https://hayeren-v9-live.onrender.com/';
 const OUT=path.join(__dirname,'hayeren-static');
