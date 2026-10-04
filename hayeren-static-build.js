@@ -219,7 +219,23 @@ function patch(html){
 
 (async()=>{
 
- const html=patch(await fetchRealApp());
+
+ const rawApp=await fetchRealApp();
+ try{
+   const payloads=[...rawApp.matchAll(/await ungzip\('([^']+)'\)/g)].map(m=>m[1]);
+   console.log('ENGINE_PAYLOADS',payloads.length,payloads.map(x=>x.length).join(','));
+   payloads.forEach((p,idx)=>{
+     try{
+       const dec=zlib.gunzipSync(Buffer.from(p,'base64')).toString('utf8');
+       console.log('ENGINE_DECODED',idx,'bytes='+Buffer.byteLength(dec));
+       for(const q of ['Соедини пары','Небольшая проверка','Что написано по-армянски?','lesson_1','Приветствия','восемь','Метро','Ցտեսություն','Բարի լույս']){
+         const i=dec.indexOf(q); console.log('ENGINE_Q',idx,q,'idx='+i);
+         if(i>=0) console.log('ENGINE_SNIP',idx,q,dec.slice(Math.max(0,i-2500),i+6500).replace(/\n/g,' '));
+       }
+     }catch(e){console.log('ENGINE_DECODE_ERR',idx,String(e))}
+   });
+ }catch(e){console.log('ENGINE_SCAN_ERR',String(e))}
+ const html=patch(rawApp);
  const probes=['До свидания','восемь','Метро','Соедини пары','Небольшая проверка','Что написано по-армянски?','lesson_1','Приветствия'];
  for(const q of probes){
    const i=html.indexOf(q);
