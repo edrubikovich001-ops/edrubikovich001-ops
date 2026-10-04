@@ -309,7 +309,7 @@ function patch(html){
  document.addEventListener('DOMContentLoaded',schedule);
  setInterval(fix,250);setTimeout(fix,30);setTimeout(fix,300);setTimeout(fix,1000);
  window.__HAYEREN_BEGINNER_FIX__='19.0';
- })();<\\/script>\`;
+ })();<\\/script>`;
 
  if(html.includes('<head>')) html=html.replace('<head>','<head>'+boot+beginnerV18+beginnerV19); else html=boot+html;
  html=html.replace('</head>','<meta name="hayeren-entry" content="static-cdn-19"></head>');
