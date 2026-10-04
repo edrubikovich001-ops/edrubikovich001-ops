@@ -211,7 +211,7 @@ function patch(html){
  })();<\/script>`;
 
 
- const beginnerV19=\`<script id="hayeren-beginner-v19">(()=>{
+ const beginnerV19=`<script id="hayeren-beginner-v19">(()=>{
  const ARM=/[Ա-Ֆա-ֆև]/, CYR=/[А-Яа-яЁё]/;
  const clean=s=>String(s||'').replace(/\\s+/g,' ').trim();
  const norm=s=>clean(s).toLowerCase().replace(/[?!.,;:()«»“”"'։՞՜՛]/g,'').replace(/ё/g,'е');
