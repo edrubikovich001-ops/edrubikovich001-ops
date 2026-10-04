@@ -229,7 +229,7 @@ function patch(html){
      try{
        const dec=zlib.gunzipSync(Buffer.from(p,'base64')).toString('utf8');
        console.log('ENGINE_DECODED',idx,'bytes='+Buffer.byteLength(dec));
-       for(const q of ['function Matching','pairIds','transcription-choice','armenian-choice','function build','questions =','vocabIds','lesson.vocab','shuffle(','dialogue','options:','greeting_tstesutyun','transport_metro','num_8']){
+       for(const q of ['activeSession','buildLessonQuestions(','setActiveSession','questionsRef','lessonQuestions','completedSteps','currentIndex']){
          const i=dec.indexOf(q); console.log('ENGINE_Q',idx,q,'idx='+i);
          if(i>=0) console.log('ENGINE_SNIP',idx,q,dec.slice(Math.max(0,i-2500),i+6500).replace(/\n/g,' '));
        }
