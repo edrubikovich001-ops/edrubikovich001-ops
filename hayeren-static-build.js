@@ -25,7 +25,7 @@ async function fetchRealApp(){
  let last='';
  for(let i=0;i<24;i++){
    try{
-     const r=await fetch(SOURCE+'?static-build='+Date.now(),{redirect:'follow',headers:{'user-agent':'Hayeren-Static-Builder/16'}});
+     const r=await fetch(SOURCE+'?static-build='+Date.now(),{redirect:'follow',headers:{'user-agent':'Hayeren-Static-Builder/17'}});
      const text=await r.text(); last=text;
      const type=r.headers.get('content-type')||'';
      const real=r.status===200&&type.includes('text/html')&&text.includes('lesson_48_final')&&text.includes('MASTERY LEAGUE')&&!/APPLICATION LOADING|START BUILDING ON RENDER TODAY|INCOMING HTTP REQUEST DETECTED/i.test(text);
@@ -45,7 +45,7 @@ function patch(html){
 
  const boot=`<style id="hayeren-no-answer-leak-css">.hayeren-hide-answer-hint{display:none!important}</style>
  <script id="hayeren-static-edge-16">(()=>{
-   window.__HAYEREN_ENTRY__='static-cdn-16';
+   window.__HAYEREN_ENTRY__='static-cdn-17';
    try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{})}}catch{}
    const edge='${EDGE_TRANSLATE}',nativeFetch=window.fetch.bind(window);
    const sameTranslate=u=>{try{const x=new URL(u,location.href);return x.pathname==='/api/translate'||x.pathname.endsWith('/api/translate')}catch{return false}};
@@ -86,23 +86,79 @@ function patch(html){
        choice.dataset.hayerenNoLeak=hidden?'1':'0';
      }
    }
+   const meaningMap={
+     'Բարև':'Привет','Բարև ձեզ':'Здравствуйте','Բարի լույս':'Доброе утро','Բարի երեկո':'Добрый вечер',
+     'Ինչպե՞ս եք':'Как вы?','Ինչպե՞ս ես':'Как ты?','Ո՞նց ես':'Как дела?','Լավ եմ':'У меня всё хорошо',
+     'Լավ':'Хорошо','Շատ լավ':'Очень хорошо','Վատ չէ':'Неплохо','Հիանալի':'Отлично','Իսկ դու':'А ты?',
+     'Շնորհակալություն':'Спасибо','Շատ շնորհակալություն':'Большое спасибо','Խնդրեմ':'Пожалуйста',
+     'Ներեցեք':'Извините','Կներեք':'Извините','Ցտեսություն':'До свидания','Այո':'Да','Ոչ':'Нет',
+     'Ի՞նչ է ձեր անունը':'Как вас зовут?','Ի՞նչ է քո անունը':'Как тебя зовут?','Քո անունն ի՞նչ է':'Как тебя зовут?',
+     'Իմ անունն է':'Меня зовут…','Որտեղի՞ց եք':'Откуда вы?','Որտեղի՞ց ես':'Откуда ты?',
+     'Ուրախ եմ ծանոթանալու':'Приятно познакомиться','Ես էլ':'Я тоже','Բարի գալուստ':'Добро пожаловать'
+   };
+   const normArm=s=>clean(s).replace(/[։՞՜՛.,!?;:()«»“”"']/g,'').toLowerCase();
+   const normCyr=s=>clean(s).replace(/[.,!?;:()«»“”"']/g,'').toLowerCase();
+   const mapMeaning=hy=>{
+     if(meaningMap[clean(hy)])return meaningMap[clean(hy)];
+     const k=normArm(hy);for(const [a,r] of Object.entries(meaningMap))if(normArm(a)===k)return r;
+     return '';
+   };
+   function beginnerMeaningQuiz(){
+     const page=clean(document.body&&document.body.innerText);
+     const lm=page.match(/Урок\s+(\d+)/i),lesson=lm?Number(lm[1]):99;
+     if(lesson>4)return;
+     const heads=[...document.querySelectorAll('h1,h2,h3,h4,p,div,span')].filter(el=>{
+       const t=clean(el.textContent);
+       return t==='Что написано по-армянски?'||t==='Какое армянское выражение звучит так?'||t==='Выбери армянское написание';
+     });
+     for(const head of heads){
+       let card=head;
+       for(let i=0;i<8&&card;i++,card=card.parentElement){
+         const buttons=[...card.querySelectorAll('button')].filter(b=>ARM.test(b.textContent||''));
+         if(buttons.length<2)continue;
+         if(card.dataset.hayerenBeginnerMeaning==='1')break;
+         const txt=clean(card.innerText||card.textContent);
+         const m=txt.match(/ЗВУЧИТ РУССКИМИ БУКВАМИ:\s*([^\n]{2,70})/i);
+         if(!m)break;
+         const prompt=clean(m[1]);
+         const rows=buttons.map(b=>{
+           const raw=String(b.textContent||'').split(/\n+/).map(clean).filter(Boolean);
+           const hy=raw.find(x=>ARM.test(x))||'';
+           const tr=raw.find(x=>CYR.test(x)&&!ARM.test(x))||'';
+           return {b,hy,tr,meaning:mapMeaning(hy)};
+         });
+         if(rows.some(x=>!x.hy||!x.meaning))break;
+         card.dataset.hayerenBeginnerMeaning='1';
+         head.textContent='Что значит «'+prompt+'»?';
+         [...card.querySelectorAll('*')].forEach(el=>{
+           if(clean(el.textContent)==='ЗВУЧИТ РУССКИМИ БУКВАМИ:')el.textContent='ФРАЗА:';
+         });
+         rows.forEach(({b,meaning})=>{
+           b.innerHTML='<span style="display:block;font-size:20px;font-weight:750;line-height:1.25;text-align:left">'+meaning+'</span>';
+           b.dataset.hayerenMeaningChoice='1';
+         });
+         break;
+       }
+     }
+   }
    let scanTimer=0;
-   const schedule=()=>{clearTimeout(scanTimer);scanTimer=setTimeout(()=>requestAnimationFrame(hideLeakingHints),30)};
+   const runFixes=()=>{hideLeakingHints();beginnerMeaningQuiz()};
+   const schedule=()=>{clearTimeout(scanTimer);scanTimer=setTimeout(()=>requestAnimationFrame(runFixes),30)};
    new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
    document.addEventListener('DOMContentLoaded',schedule);
    setTimeout(schedule,80);setTimeout(schedule,400);setTimeout(schedule,1000);
  })();</script>`;
 
  if(html.includes('<head>')) html=html.replace('<head>','<head>'+boot); else html=boot+html;
- html=html.replace('</head>','<meta name="hayeren-entry" content="static-cdn-16"></head>');
+ html=html.replace('</head>','<meta name="hayeren-entry" content="static-cdn-17"></head>');
  return html;
 }
 
 (async()=>{
  const html=patch(await fetchRealApp());
- if(!html.includes('lesson_48_final')||!html.includes('MASTERY LEAGUE')||!html.includes('static-cdn-16')||!html.includes('hayeren-no-answer-leak-css'))throw new Error('Static validation failed');
+ if(!html.includes('lesson_48_final')||!html.includes('MASTERY LEAGUE')||!html.includes('static-cdn-17')||!html.includes('hayeren-no-answer-leak-css')||!html.includes('beginnerMeaningQuiz'))throw new Error('Static validation failed');
  fs.rmSync(OUT,{recursive:true,force:true});fs.mkdirSync(OUT,{recursive:true});
  fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
- fs.writeFileSync(path.join(OUT,'health.json'),JSON.stringify({ok:true,entry:'static-cdn-16',lesson48:true,mastery:true,noAnswerLeak:true,generatedAt:new Date().toISOString()}));
+ fs.writeFileSync(path.join(OUT,'health.json'),JSON.stringify({ok:true,entry:'static-cdn-17',lesson48:true,mastery:true,noAnswerLeak:true,beginnerMeaningQuiz:true,generatedAt:new Date().toISOString()}));
  console.log('HAYEREN_STATIC_READY bytes='+Buffer.byteLength(html));
 })().catch(e=>{console.error(e);process.exit(1)});
