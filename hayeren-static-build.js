@@ -40,7 +40,7 @@ async function fetchRealApp(){
 
 
 function patchLessonEngine(html){
-  const re=/await ungzip\\('([^']+)'\\)/g;
+  const re=/await ungzip\('([^']+)'\)/g;
   let patched=0;
   html=html.replace(re,(full,b64)=>{
     let dec;
