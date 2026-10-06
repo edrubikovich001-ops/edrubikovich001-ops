@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.parse
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -53,6 +54,15 @@ CORE_RU_HY = {
     "вокзал": "Կայարան",
     "город": "Քաղաք",
     "центр": "Կենտրոն",
+    "центра": "Կենտրոն",
+    "ереван": "Երևան",
+    "билет": "Տոմս",
+    "завтра": "Վաղը",
+    "сегодня": "Այսօր",
+    "утро": "Առավոտ",
+    "утром": "Առավոտյան",
+    "вечер": "Երեկո",
+    "вечером": "Երեկոյան",
     "друг": "Ընկեր",
     "семья": "Ընտանիք",
     "мама": "Մայր",
@@ -77,7 +87,7 @@ CORE_RU_HY = {
 
 def download_file(repo, name, target):
     url = f"https://huggingface.co/{repo}/resolve/main/{name}?download=true"
-    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.6"})
+    req = urllib.request.Request(url, headers={"User-Agent": "HayerenOffline/1.7"})
     with urllib.request.urlopen(req, timeout=180) as response, open(target, "wb") as f:
         shutil.copyfileobj(response, f)
     if target.stat().st_size < 50:
@@ -109,10 +119,26 @@ def build_models():
             raise
     if not WIKIDICT_FILE.exists() or WIKIDICT_FILE.stat().st_size < 100000:
         print("DICT_BUILD_START wikidict-hy-ru", flush=True)
-        req = urllib.request.Request(WIKIDICT_URL, headers={"User-Agent": "HayerenOffline/1.6"})
+        req = urllib.request.Request(WIKIDICT_URL, headers={"User-Agent": "HayerenOffline/1.7"})
         with urllib.request.urlopen(req, timeout=180) as response, open(WIKIDICT_FILE, "wb") as f:
             shutil.copyfileobj(response, f)
         print(f"DICT_BUILD_DONE bytes={WIKIDICT_FILE.stat().st_size}", flush=True)
+
+
+def google_translate(text, source, target):
+    q = urllib.parse.urlencode({
+        "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text
+    })
+    url = "https://translate.googleapis.com/translate_a/single?" + q
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 Hayeren/1.7",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=4.5) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    parts = data[0] if isinstance(data, list) and data else []
+    out = "".join(str(x[0] or "") for x in parts if isinstance(x, list) and x).strip()
+    return out
 
 
 class DirectionEngine:
@@ -247,18 +273,47 @@ class Engine:
 
     def _template_ru_hy(self, text):
         n = self._norm_ru(text)
+
         m = re.fullmatch(r"где(?: находится)?(?: ближайшая| ближайший| ближайшее)? (.+)", n)
         if m:
             noun = m.group(1).strip()
             hy = self.ru_hy.get(noun)
             if hy:
                 nearest = " ближай" in n
-                return "Որտե՞ղ է " + ("մոտակա " if nearest else "") + self._definite(hy) + "։"
+                return "Որտե՞ղ է " + ("մոտակա " if nearest else "") + self._definite(hy).lower() + "։"
+
         m = re.fullmatch(r"мне (?:нужен|нужна|нужно) (.+)", n)
         if m:
             hy = self.ru_hy.get(m.group(1).strip())
             if hy:
                 return "Ինձ " + hy.lower() + " է պետք։"
+
+        m = re.fullmatch(r"я хочу (?:поехать|пойти) в ([а-яё-]+)(.*)", n)
+        if m:
+            dest = self.ru_hy.get(m.group(1).strip())
+            tail = m.group(2).strip()
+            if dest:
+                time_bits = []
+                if "завтра" in tail:
+                    time_bits.append("վաղը")
+                elif "сегодня" in tail:
+                    time_bits.append("այսօր")
+                if "утром" in tail:
+                    time_bits.append("առավոտյան")
+                elif "вечером" in tail:
+                    time_bits.append("երեկոյան")
+                when = (" ".join(time_bits) + " ") if time_bits else ""
+                return "Ես ուզում եմ " + when + "գնալ " + dest + "։"
+
+        m = re.fullmatch(r"сколько стоит билет до ([а-яё-]+)", n)
+        if m:
+            dest = self.ru_hy.get(m.group(1).strip())
+            if dest:
+                base = dest.lower()
+                if base.endswith("ը") or base.endswith("ն"):
+                    base = base[:-1]
+                return "Որքա՞ն արժե " + base + "ի տոմսը։"
+
         return None
 
     @staticmethod
@@ -365,6 +420,16 @@ class Engine:
                     self._cache_put(key, templated)
                     return templated
 
+            # For arbitrary phrases, prefer a broad online MT engine when reachable.
+            # The local neural models stay as an offline fallback; exact dictionary entries stay first.
+            try:
+                web = google_translate(clean_text, source, target)
+                if self._valid_script(web, target) and self._not_pathological(web):
+                    self._cache_put(key, web)
+                    return web
+            except Exception as exc:
+                print(f"GOOGLE_FALLBACK {type(exc).__name__}: {exc}", flush=True)
+
             engine = self._get(direction)
             outs = []
             for chunk in self._chunks(clean_text):
@@ -431,7 +496,7 @@ def selftest():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "HayerenOffline/1.6"
+    server_version = "HayerenOffline/1.7"
 
     def log_message(self, fmt, *args):
         print("HTTP " + (fmt % args), flush=True)
@@ -457,7 +522,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": ready,
                 "service": "hayeren-offline-translator",
                 "engine": "Helsinki-NLP OPUS-MT + CTranslate2 INT8",
-                "version": "1.6",
+                "version": "1.7",
                 "loaded": sorted(ENGINE.engines.keys()),
                 "cache": len(ENGINE.cache),
             }, 200 if ready else 503)
@@ -484,7 +549,7 @@ class Handler(BaseHTTPRequestHandler):
                 "provider": "Hayeren Offline · Helsinki-NLP",
                 "verified": False,
                 "elapsedMs": elapsed_ms,
-                "version": "1.6",
+                "version": "1.7",
             })
         except Exception as exc:
             print(f"TRANSLATE_ERROR {type(exc).__name__}: {exc}", flush=True)
@@ -505,7 +570,7 @@ def main():
         print(f"PRELOAD_ERROR {type(exc).__name__}: {exc}", flush=True)
     threading.Thread(target=selftest, name="hayeren-selftest", daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"HAYEREN_OFFLINE_READY port={PORT} version=1.6", flush=True)
+    print(f"HAYEREN_OFFLINE_READY port={PORT} version=1.7", flush=True)
     server.serve_forever()
 
 
