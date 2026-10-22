@@ -65,7 +65,7 @@ def segment(task):
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
  for i,f in enumerate(pool.map(segment,enumerate(shots))):
   if (i+1)%20==0:print("Rendered",i+1,"/120",flush=True)
-concat=O/"concat.txt";concat.write_text("".join("file '"+str((T/('%03d.mp4'%i)).resolve())+"'\\n" for i in range(len(shots))))
+concat=O/"concat.txt";concat.write_text("".join("file '"+str((T/('%03d.mp4'%i)).resolve())+"'\n" for i in range(len(shots))))
 dst=O/"WHAT_IF_LAB_10MIN_1080P_NO_VOICE.mp4"
 cmd("ffmpeg","-hide_banner","-loglevel","error","-y","-f","concat","-safe","0","-i",str(concat),"-c","copy","-movflags","+faststart",str(dst))
 duration=info(dst)
