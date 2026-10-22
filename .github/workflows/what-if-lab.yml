@@ -1,0 +1,30 @@
+name: WHAT IF LAB - Render 10 minute stock video
+on:
+  push:
+    branches: [what-if-lab-render-2026]
+  workflow_dispatch:
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install requests
+      - name: Download footage and export the 16:9 master
+        working-directory: what-if-lab
+        run: python render.py
+      - name: Upload completed MP4 and footage list
+        uses: actions/upload-artifact@v4
+        with:
+          name: WHAT_IF_LAB_10MIN_REAL_VIDEO
+          path: |
+            what-if-lab/output/WHAT_IF_LAB_10MIN_1080P_NO_VOICE.mp4
+            what-if-lab/output/EDIT_MAP.json
+          retention-days: 7
+          if-no-files-found: error
