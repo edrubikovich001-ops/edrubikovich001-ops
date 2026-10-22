@@ -2,6 +2,8 @@ name: WHAT IF LAB - Render 10 minute stock video
 on:
   push:
     branches: [what-if-lab-render-2026]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   render:
