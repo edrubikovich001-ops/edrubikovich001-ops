@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Install ffmpeg and Python dependencies
@@ -17,10 +17,13 @@ jobs:
           sudo apt-get install -y ffmpeg
           python -m pip install requests
       - name: Download footage and export the 16:9 master
+        id: make_video
         working-directory: what-if-lab
         run: python render.py
       - name: Upload completed MP4 and footage list
+        id: publish_artifact
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: WHAT_IF_LAB_10MIN_REAL_VIDEO
           path: |
@@ -28,3 +31,15 @@ jobs:
             what-if-lab/output/EDIT_MAP.json
           retention-days: 7
           if-no-files-found: error
+      - name: Write status and workflow run link
+        if: always()
+        env:
+          MAKE_RESULT: ${{ steps.make_video.outcome }}
+          ARTIFACT_RESULT: ${{ steps.publish_artifact.outcome }}
+        run: |
+          printf 'Run: https://github.com/%s/actions/runs/%s\nRender: %s\nArtifact: %s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$MAKE_RESULT" "$ARTIFACT_RESULT" > what-if-lab/RENDER_STATUS.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add what-if-lab/RENDER_STATUS.md
+          git commit -m "Log WHAT IF LAB rendering result" || exit 0
+          git push origin HEAD:what-if-lab-render-2026
