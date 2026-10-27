@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b101b" />
+  <meta name="description" content="ATLAS — твоя библиотека, умный подбор книг и читалка с сохранением прогресса." />
+  <title>ATLAS — читать осознанно</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <header class="topbar" id="topbar">
+      <div class="brand"><span class="brand-mark">A<span class="brand-spark">✦</span></span><span>ATLAS <small>READING CLUB</small></span></div>
+      <div class="top-actions"><span class="today-date" id="todayDate"></span><button class="icon-btn" id="settingsBtn" aria-label="Настройки">⚙</button><div class="avatar" id="userAvatar">A</div></div>
+    </header>
+    <main id="app" aria-live="polite"></main>
+    <nav class="bottom-nav" id="bottomNav" aria-label="Основная навигация">
+      <button data-tab="home" class="active"><span class="nav-ico">⌂</span><span>Главная</span></button>
+      <button data-tab="catalog"><span class="nav-ico">▤</span><span>Каталог</span></button>
+      <button data-tab="advisor"><span class="nav-ico">✧</span><span>Подбор</span></button>
+      <button data-tab="library"><span class="nav-ico">▥</span><span>Моё</span></button>
+    </nav>
+  </div>
+  <div id="overlay" class="overlay" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="bookFile" accept=".txt,.fb2,.epub,.pdf,text/plain,application/epub+zip,application/pdf" hidden />
+  <input type="file" id="coverFile" accept="image/*" hidden />
+  <input type="file" id="backupFile" accept=".json,application/json" hidden />
+  <script src="./app.js" defer></script>
+  <script>if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});</script>
+</body>
+</html>

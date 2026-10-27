@@ -1,0 +1,11 @@
+{
+  "name": "ATLAS — библиотека и читалка",
+  "short_name": "ATLAS",
+  "description": "Читай книги, сохраняй точное место и получай рекомендации.",
+  "lang": "ru",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090e18",
+  "theme_color": "#090e18",
+  "icons": [{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
