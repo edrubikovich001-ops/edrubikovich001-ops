@@ -248,5 +248,10 @@ function patch(html){
  fs.rmSync(OUT,{recursive:true,force:true});fs.mkdirSync(OUT,{recursive:true});
  fs.writeFileSync(path.join(OUT,'index.html'),html,'utf8');
  fs.writeFileSync(path.join(OUT,'health.json'),JSON.stringify({ok:true,entry:'static-cdn-18',lesson48:true,mastery:true,noAnswerLeak:true,beginnerMeaningQuiz:true,beginnerV18:true,beginnerSafeV20:true,generatedAt:new Date().toISOString()}));
+ // Extra isolated ATLAS app: does not replace or modify the Hayeren root site.
+ const atlasDir=path.join(OUT,'atlas');
+ fs.mkdirSync(atlasDir,{recursive:true});
+ fs.copyFileSync(path.join(__dirname,'atlas-standalone.html'),path.join(atlasDir,'index.html'));
+ console.log('ATLAS_SEPARATE_ROUTE_READY bytes='+fs.statSync(path.join(atlasDir,'index.html')).size);
  console.log('HAYEREN_STATIC_READY bytes='+Buffer.byteLength(html));
 })().catch(e=>{console.error(e);process.exit(1)});
